@@ -1,7 +1,8 @@
 use super::{BasicSignature, Payload, SignatureScheme, VerificationError, Version};
 use async_trait::async_trait;
+use ethers_core::{types::H160, utils::to_checksum};
 use hex::FromHex;
-use siwe::eip4361::{Message, VerificationError as SVE, Version as SVersion};
+use siwe::{Message, VerificationError as SVE, Version as SVersion};
 
 impl Into<SVersion> for Version {
     fn into(self) -> SVersion {
@@ -61,7 +62,7 @@ impl From<Message> for Payload {
             iss: format!(
                 "did:pkh:eip155:{}:0x{}",
                 m.chain_id,
-                hex::encode(&m.address)
+                to_checksum(&H160(&m.address), None)
             )
             .parse()
             .unwrap(),

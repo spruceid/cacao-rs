@@ -2,17 +2,25 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use http::uri::Authority;
 use iri_string::types::{UriAbsoluteString, UriString};
+use libipld::{
+    cbor::DagCborCodec,
+    codec::{Decode, Encode},
+    DagCbor,
+};
+use siwe::TimeStamp;
 use std::str::FromStr;
 use thiserror::Error;
 
 pub mod generic;
 
-#[cfg(feature = "siwe")]
-pub mod siwe;
+// #[cfg(feature = "siwe")]
+// pub mod siwe;
 
-pub type TimeStamp = DateTime<Utc>;
-
-pub struct CACAO<S: SignatureScheme> {
+#[derive(DagCbor)]
+pub struct CACAO<S>
+where
+    S: SignatureScheme,
+{
     h: Header,
     p: Payload,
     s: S::Signature,
@@ -21,6 +29,7 @@ pub struct CACAO<S: SignatureScheme> {
 impl<S> CACAO<S>
 where
     S: SignatureScheme,
+    S::Signature: Encode<DagCborCodec> + Decode<DagCborCodec>,
 {
     pub fn new(p: Payload, s: S::Signature) -> Self {
         Self {
@@ -51,13 +60,14 @@ where
     }
 }
 
+#[derive(DagCbor)]
 pub struct Header {
     t: String,
 }
 
 #[async_trait]
 pub trait SignatureScheme {
-    type Signature;
+    type Signature: Encode<DagCborCodec> + Decode<DagCborCodec>;
     fn id() -> String;
     fn header() -> Header {
         Header { t: Self::id() }
@@ -87,7 +97,11 @@ pub enum VerificationError {
     NotCurrentlyValid,
 }
 
-pub struct BasicSignature<S> {
+#[derive(DagCbor)]
+pub struct BasicSignature<S>
+where
+    S: Encode<DagCborCodec> + Decode<DagCborCodec>,
+{
     pub s: S,
 }
 
@@ -104,15 +118,30 @@ pub struct Payload {
     pub aud: UriAbsoluteString,
     pub version: Version,
     pub nonce: String,
-    pub iat: String,
-    pub exp: Option<String>,
-    pub nbf: Option<String>,
+    pub iat: TimeStamp,
+    pub exp: Option<TimeStamp>,
+    pub nbf: Option<TimeStamp>,
     pub request_id: Option<String>,
     pub resources: Vec<UriString>,
 }
 
+#[derive(Clone, DagCbor)]
+struct TmpPayload {
+    domain: String,
+    iss: String,
+    statement: String,
+    aud: String,
+    version: String,
+    nonce: String,
+    iat: String,
+    exp: Option<String>,
+    nbf: Option<String>,
+    requestId: Option<String>,
+    resources: Vec<String>,
+}
+
 impl Payload {
-    pub fn sign<S: SignatureScheme>(self, s: <S as SignatureScheme>::Signature) -> CACAO<S> {
+    pub fn sign<S: SignatureScheme>(self, s: S::Signature) -> CACAO<S> {
         CACAO {
             h: S::header(),
             p: self,
@@ -135,18 +164,12 @@ impl Payload {
         &self.iss.as_str()
     }
 
+    pub fn valid_at(&self, t: &DateTime<Utc>) -> bool {
+        self.nbf.as_ref().map(|nbf| nbf < t).unwrap_or(true)
+            && self.exp.as_ref().map(|exp| exp >= t).unwrap_or(true)
+    }
+
     pub fn valid_now(&self) -> bool {
-        let now = Utc::now();
-        self.nbf
-            .as_ref()
-            .and_then(|s| TimeStamp::from_str(s).ok())
-            .map(|nbf| now >= nbf)
-            .unwrap_or(true)
-            && self
-                .exp
-                .as_ref()
-                .and_then(|s| TimeStamp::from_str(s).ok())
-                .map(|exp| now < exp)
-                .unwrap_or(true)
+        self.valid_at(&Utc::now())
     }
 }
