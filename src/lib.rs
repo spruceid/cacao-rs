@@ -55,6 +55,12 @@ pub struct Header {
     t: String,
 }
 
+impl Header {
+    pub fn t<'a>(&'a self) -> &'a str {
+        &self.t.as_str()
+    }
+}
+
 #[async_trait]
 pub trait SignatureScheme {
     type Signature;
