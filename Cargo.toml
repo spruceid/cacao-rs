@@ -12,7 +12,7 @@ repository = "https://github.com/spruceid/cacao/"
 [features]
 eip4361 = ["hex", "ethers-core"]
 zcap = ["ssi"]
-default = ["eip4361", "zcap"]
+default = ["eip4361", "zcap", "siwe"]
 
 [dependencies]
 siwe = { version = "0.2" }
