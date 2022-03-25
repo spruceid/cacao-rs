@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use http::uri::Authority;
 use iri_string::types::{UriAbsoluteString, UriString};
-use siwe::TimeStamp;
+pub use siwe::TimeStamp;
 use std::str::FromStr;
 use thiserror::Error;
 
