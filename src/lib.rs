@@ -3,13 +3,11 @@ use chrono::{DateTime, Utc};
 use http::uri::Authority;
 use iri_string::types::{UriAbsoluteString, UriString};
 pub use siwe::TimeStamp;
-use std::str::FromStr;
 use thiserror::Error;
 
 pub mod generic;
 
-#[cfg(feature = "siwe")]
-pub mod siwe;
+pub mod siwe_cacao;
 
 pub struct CACAO<S>
 where
@@ -102,8 +100,8 @@ pub enum Version {
 pub struct Payload {
     pub domain: Authority,
     pub iss: UriAbsoluteString,
-    pub statement: String,
-    pub aud: UriAbsoluteString,
+    pub statement: Option<String>,
+    pub aud: UriString,
     pub version: Version,
     pub nonce: String,
     pub iat: TimeStamp,
