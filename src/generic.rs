@@ -32,11 +32,11 @@ where
             return Err(VerificationError::NotCurrentlyValid);
         };
         S::verify(
-            &R::serialize(&payload)
+            &R::serialize(payload)
                 .map_err(|_| VerificationError::Serialization)?
                 .into(),
-            &S::get_vmat(&payload).ok_or(VerificationError::MissingVerificationMaterial)?,
-            &sig,
+            &S::get_vmat(payload).ok_or(VerificationError::MissingVerificationMaterial)?,
+            sig,
         )
         .await
         .map_err(|_| VerificationError::Crypto)?;

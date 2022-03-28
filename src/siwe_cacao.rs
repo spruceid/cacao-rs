@@ -12,10 +12,10 @@ use libipld::{
     error::Error as IpldError,
 };
 
-impl Into<SVersion> for Version {
-    fn into(self) -> SVersion {
-        match self {
-            Self::V1 => SVersion::V1,
+impl From<Version> for SVersion {
+    fn from(s: Version) -> Self {
+        match s {
+            Version::V1 => Self::V1,
         }
     }
 }
@@ -51,7 +51,7 @@ pub enum SIWEPayloadConversionError {
 impl TryInto<Message> for Payload {
     type Error = SIWEPayloadConversionError;
     fn try_into(self) -> Result<Message, Self::Error> {
-        let (chain_id, address) = match &self.iss.as_str().split(":").collect::<Vec<&str>>()[..] {
+        let (chain_id, address) = match &self.iss.as_str().split(':').collect::<Vec<&str>>()[..] {
             &["did", "pkh", "eip155", c, h] if h.get(..2) == Some("0x") => {
                 (c.parse()?, FromHex::from_hex(&h[2..])?)
             }

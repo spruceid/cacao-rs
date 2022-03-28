@@ -57,7 +57,7 @@ where
         S: Send + Sync,
         S::Signature: Send + Sync,
     {
-        S::verify_cacao(&self).await
+        S::verify_cacao(self).await
     }
 }
 
@@ -170,11 +170,11 @@ impl Payload {
         S: Send + Sync,
         S::Signature: Send + Sync,
     {
-        S::verify(&self, s).await
+        S::verify(self, s).await
     }
 
-    pub fn iss<'a>(&'a self) -> &'a str {
-        &self.iss.as_str()
+    pub fn iss(&self) -> &str {
+        self.iss.as_str()
     }
 
     pub fn valid_at(&self, t: &DateTime<Utc>) -> bool {
@@ -231,7 +231,7 @@ mod payload_ipld {
         #[error(transparent)]
         Domain(#[from] InvalidUri),
         #[error(transparent)]
-        URI(#[from] URIStringError),
+        Uri(#[from] URIStringError),
         #[error(transparent)]
         TimeStamp(#[from] chrono::format::ParseError),
     }
