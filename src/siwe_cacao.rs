@@ -3,6 +3,14 @@ use async_trait::async_trait;
 use ethers_core::{types::H160, utils::to_checksum};
 use hex::FromHex;
 use siwe::{Message, VerificationError as SVE, Version as SVersion};
+use std::io::{Read, Seek, Write};
+use thiserror::Error;
+
+use libipld::{
+    cbor::DagCborCodec,
+    codec::{Decode, Encode},
+    error::Error as IpldError,
+};
 
 impl Into<SVersion> for Version {
     fn into(self) -> SVersion {
@@ -91,10 +99,52 @@ impl From<Message> for Payload {
 }
 
 pub struct SignInWithEthereum;
+pub struct SIWESignature([u8; 65]);
+
+impl std::ops::Deref for SIWESignature {
+    type Target = [u8; 65];
+    fn deref(&self) -> &[u8; 65] {
+        &self.0
+    }
+}
+
+impl From<[u8; 65]> for SIWESignature {
+    fn from(s: [u8; 65]) -> Self {
+        Self(s)
+    }
+}
+
+#[derive(Error, Debug)]
+enum SIWESignatureDecodeError {
+    #[error("Invalid length, expected 65, got {0}")]
+    InvalidLength(usize),
+}
+
+impl Encode<DagCborCodec> for SIWESignature {
+    fn encode<W>(&self, c: DagCborCodec, w: &mut W) -> Result<(), IpldError>
+    where
+        W: Write,
+    {
+        self.0.as_ref().encode(c, w)
+    }
+}
+
+impl Decode<DagCborCodec> for SIWESignature {
+    fn decode<R>(c: DagCborCodec, r: &mut R) -> Result<Self, IpldError>
+    where
+        R: Read + Seek,
+    {
+        Vec::<u8>::decode(c, r).and_then(|v| {
+            Ok(Self(v.try_into().map_err(|e: Vec<u8>| {
+                SIWESignatureDecodeError::InvalidLength(e.len())
+            })?))
+        })
+    }
+}
 
 #[async_trait]
 impl SignatureScheme for SignInWithEthereum {
-    type Signature = BasicSignature<[u8; 65]>;
+    type Signature = BasicSignature<SIWESignature>;
     fn id() -> String {
         "eip4361-eip191".into()
     }
@@ -105,8 +155,8 @@ impl SignatureScheme for SignInWithEthereum {
         let m: Message = payload
             .clone()
             .try_into()
-            .map_err(|e| VerificationError::MissingVerificationMaterial)?;
-        m.verify_eip191(&sig.s)?;
+            .map_err(|_| VerificationError::MissingVerificationMaterial)?;
+        m.verify_eip191(&sig.s.0)?;
         Ok(())
     }
 }
@@ -137,15 +187,23 @@ Issued At: 2021-12-07T18:28:18.807Z"#,
         .unwrap()
         .into();
         let correct = <[u8; 65]>::from_hex(r#"6228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap();
-        SignInWithEthereum::verify(&message, &BasicSignature { s: correct })
-            .await
-            .unwrap();
+        SignInWithEthereum::verify(
+            &message,
+            &BasicSignature {
+                s: SIWESignature(correct),
+            },
+        )
+        .await
+        .unwrap();
 
         let incorrect = <[u8; 65]>::from_hex(r#"7228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap();
-        assert!(
-            SignInWithEthereum::verify(&message, &BasicSignature { s: incorrect })
-                .await
-                .is_err()
-        );
+        assert!(SignInWithEthereum::verify(
+            &message,
+            &BasicSignature {
+                s: SIWESignature(incorrect)
+            }
+        )
+        .await
+        .is_err());
     }
 }

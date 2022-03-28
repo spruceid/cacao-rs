@@ -213,13 +213,13 @@ mod payload_ipld {
             Self {
                 domain: p.domain.to_string(),
                 iss: p.iss.to_string(),
-                statement: p.statement.map(|e| e.to_string()),
+                statement: p.statement.as_ref().map(|e| e.to_string()),
                 aud: p.aud.to_string(),
                 version: (p.version as u64).to_string(),
                 nonce: p.nonce.to_string(),
                 iat: p.iat.to_string(),
-                exp: p.exp.map(|e| e.to_string()),
-                nbf: p.nbf.map(|e| e.to_string()),
+                exp: p.exp.as_ref().map(|e| e.to_string()),
+                nbf: p.nbf.as_ref().map(|e| e.to_string()),
                 request_id: p.request_id.clone(),
                 resources: p.resources.iter().map(|r| r.to_string()).collect(),
             }
