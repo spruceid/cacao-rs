@@ -131,6 +131,15 @@ where
     }
 }
 
+impl<S> From<S> for BasicSignature<S>
+where
+    S: DagCbor + AsRef<[u8]> + TryFrom<Vec<u8>>,
+{
+    fn from(s: S) -> Self {
+        Self { s }
+    }
+}
+
 #[derive(Copy, Clone)]
 pub enum Version {
     V1 = 1,

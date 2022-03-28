@@ -186,24 +186,14 @@ Issued At: 2021-12-07T18:28:18.807Z"#,
         )
         .unwrap()
         .into();
-        let correct = <[u8; 65]>::from_hex(r#"6228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap();
-        SignInWithEthereum::verify(
-            &message,
-            &BasicSignature {
-                s: SIWESignature(correct),
-            },
-        )
-        .await
-        .unwrap();
+        let correct: SIWESignature = <[u8; 65]>::from_hex(r#"6228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap().into();
+        SignInWithEthereum::verify(&message, &correct.into())
+            .await
+            .unwrap();
 
-        let incorrect = <[u8; 65]>::from_hex(r#"7228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap();
-        assert!(SignInWithEthereum::verify(
-            &message,
-            &BasicSignature {
-                s: SIWESignature(incorrect)
-            }
-        )
-        .await
-        .is_err());
+        let incorrect: SIWESignature = <[u8; 65]>::from_hex(r#"7228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap().into();
+        assert!(SignInWithEthereum::verify(&message, &incorrect.into())
+            .await
+            .is_err());
     }
 }
