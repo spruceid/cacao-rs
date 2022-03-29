@@ -179,7 +179,6 @@ impl SignatureScheme for SignInWithEthereum {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::BasicSignature;
     use hex::FromHex;
     use siwe::Message;
     use std::str::FromStr;
@@ -201,13 +200,13 @@ Issued At: 2021-12-07T18:28:18.807Z"#,
         )
         .unwrap()
         .into();
-        let correct: SIWESignature = <[u8; 65]>::from_hex(r#"6228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap().into();
-        SignInWithEthereum::verify(&message, &correct.into())
+        // correct signature
+        SignInWithEthereum::verify(&message, &<Vec<u8>>::from_hex(r#"6228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap().try_into().unwrap())
             .await
             .unwrap();
 
-        let incorrect: SIWESignature = <[u8; 65]>::from_hex(r#"7228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap().into();
-        assert!(SignInWithEthereum::verify(&message, &incorrect.into())
+        // incorrect signature
+        assert!(SignInWithEthereum::verify(&message, &<Vec<u8>>::from_hex(r#"7228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap().try_into().unwrap())
             .await
             .is_err());
     }
