@@ -114,10 +114,29 @@ impl From<[u8; 65]> for SIWESignature {
     }
 }
 
+impl AsRef<[u8]> for SIWESignature {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl TryFrom<Vec<u8>> for SIWESignature {
+    type Error = SIWESignatureDecodeError;
+    fn try_from(s: Vec<u8>) -> Result<Self, Self::Error> {
+        Ok(Self(s.try_into().map_err(SIWESignatureDecodeError::from)?))
+    }
+}
+
 #[derive(Error, Debug)]
-enum SIWESignatureDecodeError {
+pub enum SIWESignatureDecodeError {
     #[error("Invalid length, expected 65, got {0}")]
     InvalidLength(usize),
+}
+
+impl From<Vec<u8>> for SIWESignatureDecodeError {
+    fn from(v: Vec<u8>) -> Self {
+        Self::InvalidLength(v.len())
+    }
 }
 
 impl Encode<DagCborCodec> for SIWESignature {
@@ -134,11 +153,7 @@ impl Decode<DagCborCodec> for SIWESignature {
     where
         R: Read + Seek,
     {
-        Vec::<u8>::decode(c, r).and_then(|v| {
-            Ok(Self(v.try_into().map_err(|e: Vec<u8>| {
-                SIWESignatureDecodeError::InvalidLength(e.len())
-            })?))
-        })
+        Ok(Vec::<u8>::decode(c, r).map(SIWESignature::try_from)??)
     }
 }
 
