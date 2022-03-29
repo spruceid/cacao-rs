@@ -93,8 +93,21 @@ pub enum VerificationError {
     NotCurrentlyValid,
 }
 
-pub struct BasicSignature<S> {
+pub struct BasicSignature<S: AsRef<[u8]> + TryFrom<Vec<u8>>> {
     pub s: S,
+}
+
+impl<S: AsRef<[u8]> + TryFrom<Vec<u8>>> AsRef<[u8]> for BasicSignature<S> {
+    fn as_ref(&self) -> &[u8] {
+        self.s.as_ref()
+    }
+}
+
+impl<S: AsRef<[u8]> + TryFrom<Vec<u8>>> TryFrom<Vec<u8>> for BasicSignature<S> {
+    type Error = <S as TryFrom<Vec<u8>>>::Error;
+    fn try_from(s: Vec<u8>) -> Result<Self, Self::Error> {
+        Ok(Self { s: s.try_into()? })
+    }
 }
 
 #[derive(Copy, Clone)]
