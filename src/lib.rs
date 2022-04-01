@@ -61,7 +61,7 @@ where
     }
 }
 
-#[derive(DagCbor)]
+#[derive(DagCbor, Clone, Debug, PartialEq)]
 pub struct Header {
     t: String,
 }
@@ -131,12 +131,12 @@ where
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Version {
     V1 = 1,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Payload {
     pub domain: Authority,
     pub iss: UriAbsoluteString,
@@ -282,7 +282,7 @@ mod payload_ipld {
     }
 }
 
-#[derive(DagCbor)]
+#[derive(DagCbor, Debug, PartialEq)]
 pub struct CACAOIpld {
     #[ipld(rename = "h")]
     header: Header,
@@ -295,10 +295,12 @@ pub struct CACAOIpld {
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use libipld::codec::assert_roundtrip;
+    use libipld::ipld;
     use std::io::Cursor;
     #[test]
     fn test_ipld() {
-        let _cacao = CACAOIpld::decode(
+        let cacao = CACAOIpld::decode(
             DagCborCodec,
             &mut Cursor::new([
                 163u8, 97u8, 104u8, 161u8, 97u8, 116u8, 103u8, 101u8, 105u8, 112u8, 52u8, 51u8,
@@ -348,5 +350,31 @@ pub mod tests {
             ]),
         )
         .unwrap();
+        assert_roundtrip(
+            DagCborCodec,
+            &cacao,
+            &ipld!({
+              "h": {
+                "t": "eip4361",
+              },
+              "p": {
+                "aud": "did:key:z6MkrBdNdwUPnXDVD1DCxedzVVBpaGi8aSmoXFAeKNgtAer8",
+                "domain": "service.org",
+                "iat": "2021-09-30T16:25:24.000Z",
+                "iss": "did:pkh:eip155:1:0xBd9D9c7DC389715a89fC8149E4a5Be91336B2796",
+                "nonce": "32891757",
+                "resources": [
+                  "ipfs://Qme7ss3ARVgxv6rXqVPiikMJ8u2NLgmgszg13pYrDKEoiu",
+                  "https://example.com/my-web2-claim.json",
+                ],
+                "statement": "I accept the ServiceOrg Terms of Service: https://service.org/tos",
+                "version": "1",
+              },
+              "s": {
+                "s": "0x109313e7525dea55ec9a3ccbb63ea8d68406366250cf0880d67032b457ab33c926c67ff3fcc66ac31baa6868a80a12fbe6b7638a89f4f6d51a0229590cf6676f1c",
+                "t": "eip191",
+              },
+            }),
+        );
     }
 }
