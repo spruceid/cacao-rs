@@ -8,7 +8,7 @@ use iri_string::{
 use libipld::{
     cbor::{DagCbor, DagCborCodec},
     codec::{Decode, Encode},
-    DagCbor,
+    DagCbor, Ipld,
 };
 pub use siwe::TimeStamp;
 use thiserror::Error;
@@ -196,14 +196,18 @@ mod payload_ipld {
     struct TmpPayload {
         domain: String,
         iss: String,
+        #[ipld(default = None)]
         statement: Option<String>,
         aud: String,
         version: String,
         nonce: String,
         iat: String,
+        #[ipld(default = None)]
         exp: Option<String>,
+        #[ipld(default = None)]
         nbf: Option<String>,
         #[ipld(rename = "requestId")]
+        #[ipld(default = None)]
         request_id: Option<String>,
         resources: Vec<String>,
     }
@@ -278,13 +282,23 @@ mod payload_ipld {
     }
 }
 
+#[derive(DagCbor)]
+pub struct CACAOIpld {
+    #[ipld(rename = "h")]
+    header: Header,
+    #[ipld(rename = "p")]
+    payload: Payload,
+    #[ipld(rename = "s")]
+    signature: Ipld,
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
     use std::io::Cursor;
     #[test]
     fn test_ipld() {
-        let cacao = Payload::decode(
+        let _cacao = CACAOIpld::decode(
             DagCborCodec,
             &mut Cursor::new([
                 163u8, 97u8, 104u8, 161u8, 97u8, 116u8, 103u8, 101u8, 105u8, 112u8, 52u8, 51u8,
