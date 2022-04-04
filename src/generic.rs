@@ -1,5 +1,9 @@
 use super::{Payload, SignatureScheme, VerificationError};
 use async_trait::async_trait;
+use libipld::{
+    cbor::DagCborCodec,
+    codec::{Decode, Encode},
+};
 use std::marker::PhantomData;
 
 #[derive(Default)]
@@ -28,11 +32,11 @@ where
             return Err(VerificationError::NotCurrentlyValid);
         };
         S::verify(
-            &R::serialize(&payload)
+            &R::serialize(payload)
                 .map_err(|_| VerificationError::Serialization)?
                 .into(),
-            &S::get_vmat(&payload).ok_or(VerificationError::MissingVerificationMaterial)?,
-            &sig,
+            &S::get_vmat(payload).ok_or(VerificationError::MissingVerificationMaterial)?,
+            sig,
         )
         .await
         .map_err(|_| VerificationError::Crypto)?;
@@ -55,7 +59,7 @@ pub trait Parse: Representation {
 #[async_trait]
 pub trait SignatureType {
     const ID: &'static str;
-    type Signature;
+    type Signature: Encode<DagCborCodec> + Decode<DagCborCodec>;
     type Payload;
     type VerificationMaterial;
     type Output;

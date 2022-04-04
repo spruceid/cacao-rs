@@ -3,11 +3,19 @@ use async_trait::async_trait;
 use ethers_core::{types::H160, utils::to_checksum};
 use hex::FromHex;
 use siwe::{Message, VerificationError as SVE, Version as SVersion};
+use std::io::{Read, Seek, Write};
+use thiserror::Error;
 
-impl Into<SVersion> for Version {
-    fn into(self) -> SVersion {
-        match self {
-            Self::V1 => SVersion::V1,
+use libipld::{
+    cbor::DagCborCodec,
+    codec::{Decode, Encode},
+    error::Error as IpldError,
+};
+
+impl From<Version> for SVersion {
+    fn from(s: Version) -> Self {
+        match s {
+            Version::V1 => Self::V1,
         }
     }
 }
@@ -43,7 +51,7 @@ pub enum SIWEPayloadConversionError {
 impl TryInto<Message> for Payload {
     type Error = SIWEPayloadConversionError;
     fn try_into(self) -> Result<Message, Self::Error> {
-        let (chain_id, address) = match &self.iss.as_str().split(":").collect::<Vec<&str>>()[..] {
+        let (chain_id, address) = match &self.iss.as_str().split(':').collect::<Vec<&str>>()[..] {
             &["did", "pkh", "eip155", c, h] if h.get(..2) == Some("0x") => {
                 (c.parse()?, FromHex::from_hex(&h[2..])?)
             }
@@ -91,10 +99,67 @@ impl From<Message> for Payload {
 }
 
 pub struct SignInWithEthereum;
+pub struct SIWESignature([u8; 65]);
+
+impl std::ops::Deref for SIWESignature {
+    type Target = [u8; 65];
+    fn deref(&self) -> &[u8; 65] {
+        &self.0
+    }
+}
+
+impl From<[u8; 65]> for SIWESignature {
+    fn from(s: [u8; 65]) -> Self {
+        Self(s)
+    }
+}
+
+impl AsRef<[u8]> for SIWESignature {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl TryFrom<Vec<u8>> for SIWESignature {
+    type Error = SIWESignatureDecodeError;
+    fn try_from(s: Vec<u8>) -> Result<Self, Self::Error> {
+        Ok(Self(s.try_into().map_err(SIWESignatureDecodeError::from)?))
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum SIWESignatureDecodeError {
+    #[error("Invalid length, expected 65, got {0}")]
+    InvalidLength(usize),
+}
+
+impl From<Vec<u8>> for SIWESignatureDecodeError {
+    fn from(v: Vec<u8>) -> Self {
+        Self::InvalidLength(v.len())
+    }
+}
+
+impl Encode<DagCborCodec> for SIWESignature {
+    fn encode<W>(&self, c: DagCborCodec, w: &mut W) -> Result<(), IpldError>
+    where
+        W: Write,
+    {
+        self.0.as_ref().encode(c, w)
+    }
+}
+
+impl Decode<DagCborCodec> for SIWESignature {
+    fn decode<R>(c: DagCborCodec, r: &mut R) -> Result<Self, IpldError>
+    where
+        R: Read + Seek,
+    {
+        Ok(Vec::<u8>::decode(c, r).map(SIWESignature::try_from)??)
+    }
+}
 
 #[async_trait]
 impl SignatureScheme for SignInWithEthereum {
-    type Signature = BasicSignature<[u8; 65]>;
+    type Signature = BasicSignature<SIWESignature>;
     fn id() -> String {
         "eip4361-eip191".into()
     }
@@ -105,8 +170,8 @@ impl SignatureScheme for SignInWithEthereum {
         let m: Message = payload
             .clone()
             .try_into()
-            .map_err(|e| VerificationError::MissingVerificationMaterial)?;
-        m.verify_eip191(&sig.s)?;
+            .map_err(|_| VerificationError::MissingVerificationMaterial)?;
+        m.verify_eip191(&sig.s.0)?;
         Ok(())
     }
 }
@@ -114,7 +179,6 @@ impl SignatureScheme for SignInWithEthereum {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::BasicSignature;
     use hex::FromHex;
     use siwe::Message;
     use std::str::FromStr;
@@ -136,16 +200,14 @@ Issued At: 2021-12-07T18:28:18.807Z"#,
         )
         .unwrap()
         .into();
-        let correct = <[u8; 65]>::from_hex(r#"6228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap();
-        SignInWithEthereum::verify(&message, &BasicSignature { s: correct })
+        // correct signature
+        SignInWithEthereum::verify(&message, &<Vec<u8>>::from_hex(r#"6228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap().try_into().unwrap())
             .await
             .unwrap();
 
-        let incorrect = <[u8; 65]>::from_hex(r#"7228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap();
-        assert!(
-            SignInWithEthereum::verify(&message, &BasicSignature { s: incorrect })
-                .await
-                .is_err()
-        );
+        // incorrect signature
+        assert!(SignInWithEthereum::verify(&message, &<Vec<u8>>::from_hex(r#"7228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap().try_into().unwrap())
+            .await
+            .is_err());
     }
 }
