@@ -194,22 +194,22 @@ mod payload_ipld {
 
     #[derive(Clone, DagCbor)]
     struct TmpPayload {
-        domain: String,
-        iss: String,
-        #[ipld(default = None)]
-        statement: Option<String>,
         aud: String,
-        version: String,
-        nonce: String,
-        iat: String,
         #[ipld(default = None)]
         exp: Option<String>,
+        iat: String,
+        iss: String,
         #[ipld(default = None)]
         nbf: Option<String>,
+        nonce: String,
+        domain: String,
+        version: String,
+        resources: Vec<String>,
         #[ipld(rename = "requestId")]
         #[ipld(default = None)]
         request_id: Option<String>,
-        resources: Vec<String>,
+        #[ipld(default = None)]
+        statement: Option<String>,
     }
 
     impl From<&Payload> for TmpPayload {
