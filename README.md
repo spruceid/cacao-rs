@@ -39,7 +39,7 @@ SignInWithEthereum::verify(&message, &sig)
 let cacao = message.sign::<SignInWithEthereum>(&message, &sig);
 
 // ipld-encode the cacao
-let block = Block::encode(DagCborCodec, Code::Blake3_256, self).unwrap();
+let block = Block::encode(DagCborCodec, Code::Blake3_256, &cacao).unwrap();
 ```
 
 `
