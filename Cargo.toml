@@ -15,7 +15,7 @@ zcap = ["ssi"]
 default = ["eip4361", "zcap"]
 
 [dependencies]
-siwe = { version = "0.2" }
+siwe = { git = "https://github.com/spruceid/siwe-rs/", rev = "d2066b3638adab31b6a6d11c21b828147b2d03fa" }
 iri-string = { version = "0.4", features = ["serde", "serde-std"] }
 chrono = "0.4"
 thiserror = "1.0"
