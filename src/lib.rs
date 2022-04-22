@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use http::uri::{Authority, InvalidUri};
@@ -10,7 +12,8 @@ use libipld::{
     codec::{Decode, Encode},
     DagCbor, Ipld,
 };
-pub use siwe::TimeStamp;
+pub use siwe;
+use siwe::TimeStamp;
 use thiserror::Error;
 
 pub mod generic;
@@ -104,17 +107,17 @@ pub enum VerificationError {
     NotCurrentlyValid,
 }
 
-#[derive(DagCbor)]
+#[derive(DagCbor, Debug)]
 pub struct BasicSignature<S>
 where
-    S: DagCbor + AsRef<[u8]> + TryFrom<Vec<u8>>,
+    S: DagCbor + Debug + AsRef<[u8]> + TryFrom<Vec<u8>>,
 {
     pub s: S,
 }
 
 impl<S> AsRef<[u8]> for BasicSignature<S>
 where
-    S: DagCbor + AsRef<[u8]> + TryFrom<Vec<u8>>,
+    S: DagCbor + Debug + AsRef<[u8]> + TryFrom<Vec<u8>>,
 {
     fn as_ref(&self) -> &[u8] {
         self.s.as_ref()
@@ -123,7 +126,7 @@ where
 
 impl<S> TryFrom<Vec<u8>> for BasicSignature<S>
 where
-    S: DagCbor + AsRef<[u8]> + TryFrom<Vec<u8>>,
+    S: DagCbor + Debug + AsRef<[u8]> + TryFrom<Vec<u8>>,
 {
     type Error = <S as TryFrom<Vec<u8>>>::Error;
     fn try_from(s: Vec<u8>) -> Result<Self, Self::Error> {

@@ -99,6 +99,7 @@ impl From<Message> for Payload {
 }
 
 pub struct SignInWithEthereum;
+#[derive(Debug)]
 pub struct SIWESignature([u8; 65]);
 
 impl std::ops::Deref for SIWESignature {
