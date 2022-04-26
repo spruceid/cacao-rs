@@ -98,6 +98,7 @@ impl From<Message> for Payload {
     }
 }
 
+#[derive(Debug)]
 pub struct SignInWithEthereum;
 #[derive(Debug)]
 pub struct SIWESignature([u8; 65]);

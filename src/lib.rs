@@ -19,7 +19,7 @@ use thiserror::Error;
 pub mod generic;
 pub mod siwe_cacao;
 
-#[derive(DagCbor)]
+#[derive(DagCbor, Debug)]
 pub struct CACAO<S>
 where
     S: SignatureScheme,
@@ -64,7 +64,7 @@ where
     }
 }
 
-#[derive(DagCbor)]
+#[derive(DagCbor, Debug)]
 pub struct Header {
     t: String,
 }
@@ -76,8 +76,8 @@ impl Header {
 }
 
 #[async_trait]
-pub trait SignatureScheme {
-    type Signature;
+pub trait SignatureScheme: Debug {
+    type Signature: Debug;
     fn id() -> String;
     fn header() -> Header {
         Header { t: Self::id() }
@@ -89,7 +89,7 @@ pub trait SignatureScheme {
     async fn verify_cacao(cacao: &CACAO<Self>) -> Result<(), VerificationError>
     where
         Self: Sized,
-        Self::Signature: Send + Sync + DagCbor,
+        Self::Signature: Send + Sync + DagCbor + Debug,
     {
         Self::verify(cacao.payload(), cacao.signature()).await
     }
@@ -110,14 +110,14 @@ pub enum VerificationError {
 #[derive(DagCbor, Debug)]
 pub struct BasicSignature<S>
 where
-    S: DagCbor + Debug + AsRef<[u8]> + TryFrom<Vec<u8>>,
+    S: DagCbor + AsRef<[u8]> + TryFrom<Vec<u8>>,
 {
     pub s: S,
 }
 
 impl<S> AsRef<[u8]> for BasicSignature<S>
 where
-    S: DagCbor + Debug + AsRef<[u8]> + TryFrom<Vec<u8>>,
+    S: DagCbor + AsRef<[u8]> + TryFrom<Vec<u8>>,
 {
     fn as_ref(&self) -> &[u8] {
         self.s.as_ref()
@@ -126,7 +126,7 @@ where
 
 impl<S> TryFrom<Vec<u8>> for BasicSignature<S>
 where
-    S: DagCbor + Debug + AsRef<[u8]> + TryFrom<Vec<u8>>,
+    S: DagCbor + AsRef<[u8]> + TryFrom<Vec<u8>>,
 {
     type Error = <S as TryFrom<Vec<u8>>>::Error;
     fn try_from(s: Vec<u8>) -> Result<Self, Self::Error> {
@@ -134,12 +134,12 @@ where
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Version {
     V1 = 1,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Payload {
     pub domain: Authority,
     pub iss: UriAbsoluteString,
@@ -156,7 +156,7 @@ pub struct Payload {
 impl Payload {
     pub fn sign<S: SignatureScheme>(self, s: S::Signature) -> CACAO<S>
     where
-        S::Signature: DagCbor,
+        S::Signature: DagCbor + Debug,
     {
         CACAO {
             h: S::header(),
