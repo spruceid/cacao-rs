@@ -34,6 +34,8 @@ impl From<SVE> for VerificationError {
             SVE::Crypto(_) | SVE::Signer => Self::Crypto,
             SVE::Serialization(_) => Self::Serialization,
             SVE::Time => Self::NotCurrentlyValid,
+            SVE::DomainMismatch => Self::DomainMismatch,
+            SVE::NonceMismatch => Self::NonceMismatch,
         }
     }
 }

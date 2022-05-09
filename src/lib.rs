@@ -105,6 +105,10 @@ pub enum VerificationError {
     MissingVerificationMaterial,
     #[error("Not Currently Valid")]
     NotCurrentlyValid,
+    #[error("Domain does not match")]
+    DomainMismatch,
+    #[error("Nonce does noe match")]
+    NonceMismatch,
 }
 
 #[derive(DagCbor, Debug)]
