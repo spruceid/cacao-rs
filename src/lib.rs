@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use http::uri::{Authority, InvalidUri};
@@ -10,13 +12,14 @@ use libipld::{
     codec::{Decode, Encode},
     DagCbor, Ipld,
 };
-pub use siwe::TimeStamp;
+pub use siwe;
+use siwe::TimeStamp;
 use thiserror::Error;
 
 pub mod generic;
 pub mod siwe_cacao;
 
-#[derive(DagCbor)]
+#[derive(DagCbor, Debug)]
 pub struct CACAO<S>
 where
     S: SignatureScheme,
@@ -61,7 +64,7 @@ where
     }
 }
 
-#[derive(DagCbor)]
+#[derive(DagCbor, Debug)]
 pub struct Header {
     t: String,
 }
@@ -73,8 +76,8 @@ impl Header {
 }
 
 #[async_trait]
-pub trait SignatureScheme {
-    type Signature;
+pub trait SignatureScheme: Debug {
+    type Signature: Debug;
     fn id() -> String;
     fn header() -> Header {
         Header { t: Self::id() }
@@ -86,7 +89,7 @@ pub trait SignatureScheme {
     async fn verify_cacao(cacao: &CACAO<Self>) -> Result<(), VerificationError>
     where
         Self: Sized,
-        Self::Signature: Send + Sync + DagCbor,
+        Self::Signature: Send + Sync + DagCbor + Debug,
     {
         Self::verify(cacao.payload(), cacao.signature()).await
     }
@@ -102,9 +105,13 @@ pub enum VerificationError {
     MissingVerificationMaterial,
     #[error("Not Currently Valid")]
     NotCurrentlyValid,
+    #[error("Domain does not match")]
+    DomainMismatch,
+    #[error("Nonce does noe match")]
+    NonceMismatch,
 }
 
-#[derive(DagCbor)]
+#[derive(DagCbor, Debug)]
 pub struct BasicSignature<S>
 where
     S: DagCbor + AsRef<[u8]> + TryFrom<Vec<u8>>,
@@ -131,12 +138,12 @@ where
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Version {
     V1 = 1,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Payload {
     pub domain: Authority,
     pub iss: UriAbsoluteString,
@@ -153,7 +160,7 @@ pub struct Payload {
 impl Payload {
     pub fn sign<S: SignatureScheme>(self, s: S::Signature) -> CACAO<S>
     where
-        S::Signature: DagCbor,
+        S::Signature: DagCbor + Debug,
     {
         CACAO {
             h: S::header(),

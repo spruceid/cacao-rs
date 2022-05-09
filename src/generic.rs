@@ -4,16 +4,18 @@ use libipld::{
     cbor::DagCborCodec,
     codec::{Decode, Encode},
 };
+use std::fmt::Debug;
 use std::marker::PhantomData;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct GenericScheme<R, S>(PhantomData<R>, PhantomData<S>);
 
 #[async_trait]
 impl<R, S, P> SignatureScheme for GenericScheme<R, S>
 where
-    R: Representation<Output = P>,
-    S: SignatureType,
+    R: Representation<Output = P> + Debug,
+    S: SignatureType + Debug,
+    S::Signature: Debug,
     S::Payload: Send + Sync,
     S::VerificationMaterial: Send + Sync,
     R::Err: Send + Sync,

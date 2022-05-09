@@ -34,6 +34,8 @@ impl From<SVE> for VerificationError {
             SVE::Crypto(_) | SVE::Signer => Self::Crypto,
             SVE::Serialization(_) => Self::Serialization,
             SVE::Time => Self::NotCurrentlyValid,
+            SVE::DomainMismatch => Self::DomainMismatch,
+            SVE::NonceMismatch => Self::NonceMismatch,
         }
     }
 }
@@ -98,7 +100,9 @@ impl From<Message> for Payload {
     }
 }
 
+#[derive(Debug)]
 pub struct SignInWithEthereum;
+#[derive(Debug)]
 pub struct SIWESignature([u8; 65]);
 
 impl std::ops::Deref for SIWESignature {
