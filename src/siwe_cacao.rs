@@ -168,9 +168,6 @@ impl SignatureScheme for SignInWithEthereum {
         "eip4361-eip191".into()
     }
     async fn verify(payload: &Payload, sig: &Self::Signature) -> Result<(), VerificationError> {
-        if !payload.valid_now() {
-            return Err(VerificationError::NotCurrentlyValid);
-        };
         let m: Message = payload
             .clone()
             .try_into()
