@@ -1,53 +1,43 @@
 use std::fmt::Debug;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
-use http::uri::{Authority, InvalidUri};
-use iri_string::{
-    types::{UriAbsoluteString, UriString},
-    validate::Error as URIStringError,
-};
-use libipld::{
-    cbor::{DagCbor, DagCborCodec},
-    codec::{Decode, Encode},
-    DagCbor, Ipld,
-};
+use libipld::{cbor::DagCbor, DagCbor, Ipld};
 pub use siwe;
-use siwe::TimeStamp;
 use thiserror::Error;
 
-pub mod generic;
 pub mod siwe_cacao;
 
 #[derive(DagCbor, Debug)]
-pub struct CACAO<S>
+pub struct CACAO<S, T>
 where
-    S: SignatureScheme,
+    S: SignatureScheme<T>,
     S::Signature: DagCbor,
+    T: Representation,
 {
-    h: Header,
-    p: Payload,
+    h: T::Header,
+    p: T::Payload,
     s: S::Signature,
 }
 
-impl<S> CACAO<S>
+impl<S, R> CACAO<S, R>
 where
-    S: SignatureScheme,
+    S: SignatureScheme<R>,
     S::Signature: DagCbor,
+    R: Representation,
 {
-    pub fn new(p: Payload, s: S::Signature) -> Self {
+    pub fn new(p: R::Payload, s: S::Signature, h: Option<R::Header>) -> Self {
         Self {
-            h: S::header(),
+            h: h.unwrap_or_else(R::header),
             p,
             s,
         }
     }
 
-    pub fn header(&self) -> &Header {
+    pub fn header(&self) -> &R::Header {
         &self.h
     }
 
-    pub fn payload(&self) -> &Payload {
+    pub fn payload(&self) -> &R::Payload {
         &self.p
     }
 
@@ -59,37 +49,35 @@ where
     where
         S: Send + Sync,
         S::Signature: Send + Sync,
+        R::Payload: Send + Sync + Debug,
+        R::Header: Send + Sync + Debug,
     {
         S::verify_cacao(self).await
     }
 }
 
-#[derive(DagCbor, Debug)]
-pub struct Header {
-    t: String,
-}
-
-impl Header {
-    pub fn t<'a>(&'a self) -> &'a str {
-        &self.t.as_str()
-    }
+pub trait Representation {
+    type Payload: DagCbor;
+    type Header: DagCbor;
+    fn header() -> Self::Header;
 }
 
 #[async_trait]
-pub trait SignatureScheme: Debug {
+pub trait SignatureScheme<T>: Debug
+where
+    T: Representation,
+{
     type Signature: Debug;
-    fn id() -> String;
-    fn header() -> Header {
-        Header { t: Self::id() }
-    }
-    async fn verify(payload: &Payload, sig: &Self::Signature) -> Result<(), VerificationError>
+    async fn verify(payload: &T::Payload, sig: &Self::Signature) -> Result<(), VerificationError>
     where
         Self::Signature: Send + Sync;
 
-    async fn verify_cacao(cacao: &CACAO<Self>) -> Result<(), VerificationError>
+    async fn verify_cacao(cacao: &CACAO<Self, T>) -> Result<(), VerificationError>
     where
         Self: Sized,
-        Self::Signature: Send + Sync + DagCbor + Debug,
+        Self::Signature: Send + Sync + Debug + DagCbor,
+        T::Payload: Send + Sync + Debug,
+        T::Header: Send + Sync + Debug,
     {
         Self::verify(cacao.payload(), cacao.signature()).await
     }
@@ -111,190 +99,16 @@ pub enum VerificationError {
     NonceMismatch,
 }
 
-#[derive(DagCbor, Debug)]
-pub struct BasicSignature<S>
-where
-    S: DagCbor + AsRef<[u8]> + TryFrom<Vec<u8>>,
-{
-    pub s: S,
-}
-
-impl<S> AsRef<[u8]> for BasicSignature<S>
-where
-    S: DagCbor + AsRef<[u8]> + TryFrom<Vec<u8>>,
-{
-    fn as_ref(&self) -> &[u8] {
-        self.s.as_ref()
-    }
-}
-
-impl<S> TryFrom<Vec<u8>> for BasicSignature<S>
-where
-    S: DagCbor + AsRef<[u8]> + TryFrom<Vec<u8>>,
-{
-    type Error = <S as TryFrom<Vec<u8>>>::Error;
-    fn try_from(s: Vec<u8>) -> Result<Self, Self::Error> {
-        Ok(Self { s: s.try_into()? })
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum Version {
-    V1 = 1,
-}
-
-#[derive(Clone, Debug)]
-pub struct Payload {
-    pub domain: Authority,
-    pub iss: UriAbsoluteString,
-    pub statement: Option<String>,
-    pub aud: UriString,
-    pub version: Version,
-    pub nonce: String,
-    pub iat: TimeStamp,
-    pub exp: Option<TimeStamp>,
-    pub nbf: Option<TimeStamp>,
-    pub request_id: Option<String>,
-    pub resources: Vec<UriString>,
-}
-impl Payload {
-    pub fn sign<S: SignatureScheme>(self, s: S::Signature) -> CACAO<S>
-    where
-        S::Signature: DagCbor + Debug,
-    {
-        CACAO {
-            h: S::header(),
-            p: self,
-            s,
-        }
-    }
-
-    pub async fn verify<S: SignatureScheme>(
-        &self,
-        s: &<S as SignatureScheme>::Signature,
-    ) -> Result<(), VerificationError>
-    where
-        S: Send + Sync,
-        S::Signature: Send + Sync,
-    {
-        S::verify(self, s).await
-    }
-
-    pub fn iss(&self) -> &str {
-        self.iss.as_str()
-    }
-
-    pub fn valid_at(&self, t: &DateTime<Utc>) -> bool {
-        self.nbf.as_ref().map(|nbf| nbf < t).unwrap_or(true)
-            && self.exp.as_ref().map(|exp| exp >= t).unwrap_or(true)
-    }
-
-    pub fn valid_now(&self) -> bool {
-        self.valid_at(&Utc::now())
-    }
-}
-
-mod payload_ipld {
-    use super::*;
-    use libipld::error::Error as IpldError;
-    use std::io::{Read, Seek, Write};
-
-    #[derive(Clone, DagCbor)]
-    struct TmpPayload {
-        aud: String,
-        #[ipld(default = None)]
-        exp: Option<String>,
-        iat: String,
-        iss: String,
-        #[ipld(default = None)]
-        nbf: Option<String>,
-        nonce: String,
-        domain: String,
-        version: String,
-        resources: Vec<String>,
-        #[ipld(rename = "requestId")]
-        #[ipld(default = None)]
-        request_id: Option<String>,
-        #[ipld(default = None)]
-        statement: Option<String>,
-    }
-
-    impl From<&Payload> for TmpPayload {
-        fn from(p: &Payload) -> Self {
-            Self {
-                domain: p.domain.to_string(),
-                iss: p.iss.to_string(),
-                statement: p.statement.as_ref().map(|e| e.to_string()),
-                aud: p.aud.to_string(),
-                version: (p.version as u64).to_string(),
-                nonce: p.nonce.to_string(),
-                iat: p.iat.to_string(),
-                exp: p.exp.as_ref().map(|e| e.to_string()),
-                nbf: p.nbf.as_ref().map(|e| e.to_string()),
-                request_id: p.request_id.clone(),
-                resources: p.resources.iter().map(|r| r.to_string()).collect(),
-            }
-        }
-    }
-
-    #[derive(Error, Debug)]
-    pub enum PayloadIpldParseError {
-        #[error(transparent)]
-        Domain(#[from] InvalidUri),
-        #[error(transparent)]
-        Uri(#[from] URIStringError),
-        #[error(transparent)]
-        TimeStamp(#[from] chrono::format::ParseError),
-    }
-
-    impl TryFrom<TmpPayload> for Payload {
-        type Error = PayloadIpldParseError;
-        fn try_from(p: TmpPayload) -> Result<Self, Self::Error> {
-            Ok(Self {
-                domain: p.domain.parse()?,
-                iss: p.iss.parse()?,
-                statement: p.statement,
-                aud: p.aud.parse()?,
-                version: Version::V1,
-                nonce: p.nonce,
-                iat: p.iat.parse()?,
-                exp: p.exp.map(|s| s.parse()).transpose()?,
-                nbf: p.nbf.map(|s| s.parse()).transpose()?,
-                request_id: p.request_id,
-                resources: p
-                    .resources
-                    .iter()
-                    .map(|r| r.parse())
-                    .collect::<Result<Vec<UriString>, URIStringError>>()?,
-            })
-        }
-    }
-
-    impl Encode<DagCborCodec> for Payload {
-        fn encode<W>(&self, c: DagCborCodec, w: &mut W) -> Result<(), IpldError>
-        where
-            W: Write,
-        {
-            TmpPayload::from(self).encode(c, w)
-        }
-    }
-
-    impl Decode<DagCborCodec> for Payload {
-        fn decode<R>(c: DagCborCodec, r: &mut R) -> Result<Self, IpldError>
-        where
-            R: Read + Seek,
-        {
-            TmpPayload::decode(c, r).and_then(|t| Ok(t.try_into()?))
-        }
-    }
-}
-
 #[derive(DagCbor)]
-pub struct CACAOIpld {
+pub struct CACAOIpld<P, H>
+where
+    H: DagCbor,
+    P: DagCbor,
+{
     #[ipld(rename = "h")]
-    header: Header,
+    header: H,
     #[ipld(rename = "p")]
-    payload: Payload,
+    payload: P,
     #[ipld(rename = "s")]
     signature: Ipld,
 }
@@ -302,10 +116,12 @@ pub struct CACAOIpld {
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use libipld::{cbor::DagCborCodec, codec::Decode};
+    use siwe_cacao::{Header, Payload};
     use std::io::Cursor;
     #[test]
     fn test_ipld() {
-        let _cacao = CACAOIpld::decode(
+        let _cacao = CACAOIpld::<Payload, Header>::decode(
             DagCborCodec,
             &mut Cursor::new([
                 163u8, 97u8, 104u8, 161u8, 97u8, 116u8, 103u8, 101u8, 105u8, 112u8, 52u8, 51u8,
