@@ -1,9 +1,9 @@
-use super::{Representation, SignatureScheme, VerificationError, CACAO};
+use super::{Representation, SignatureScheme, CACAO};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use ethers_core::{types::H160, utils::to_checksum};
 use hex::FromHex;
-use http::uri::{Authority, InvalidUri};
+use http::uri::Authority;
 use iri_string::{
     types::{UriAbsoluteString, UriString},
     validate::Error as URIStringError,
@@ -53,10 +53,7 @@ impl Payload {
         CACAO::new(self, s, None)
     }
 
-    pub async fn verify<S: SignatureScheme<Eip4361>>(
-        &self,
-        s: &<S as SignatureScheme<Eip4361>>::Signature,
-    ) -> Result<(), VerificationError>
+    pub async fn verify<S: SignatureScheme<Eip4361>>(&self, s: &S::Signature) -> Result<(), S::Err>
     where
         S: Send + Sync,
         S::Signature: Send + Sync,
@@ -121,18 +118,8 @@ mod payload_ipld {
         }
     }
 
-    #[derive(Error, Debug)]
-    pub enum PayloadIpldParseError {
-        #[error(transparent)]
-        Domain(#[from] InvalidUri),
-        #[error(transparent)]
-        Uri(#[from] URIStringError),
-        #[error(transparent)]
-        TimeStamp(#[from] chrono::format::ParseError),
-    }
-
     impl TryFrom<TmpPayload> for Payload {
-        type Error = PayloadIpldParseError;
+        type Error = IpldError;
         fn try_from(p: TmpPayload) -> Result<Self, Self::Error> {
             Ok(Self {
                 domain: p.domain.parse()?,
@@ -189,7 +176,7 @@ mod payload_ipld {
     }
 
     #[derive(Error, Debug)]
-    #[error("Invalid Type")]
+    #[error("Invalid header type value")]
     struct HeaderTypeErr;
 
     impl Decode<DagCborCodec> for Header {
@@ -232,16 +219,12 @@ impl From<SVersion> for Version {
     }
 }
 
-impl From<SVE> for VerificationError {
-    fn from(e: SVE) -> Self {
-        match e {
-            SVE::Crypto(_) | SVE::Signer => Self::Crypto,
-            SVE::Serialization(_) => Self::Serialization,
-            SVE::Time => Self::NotCurrentlyValid,
-            SVE::DomainMismatch => Self::DomainMismatch,
-            SVE::NonceMismatch => Self::NonceMismatch,
-        }
-    }
+#[derive(Error, Debug)]
+pub enum VerificationError {
+    #[error(transparent)]
+    Verification(#[from] SVE),
+    #[error(transparent)]
+    Serialization(#[from] SIWEPayloadConversionError),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -384,14 +367,12 @@ pub struct Eip191;
 #[async_trait]
 impl SignatureScheme<Eip4361> for Eip191 {
     type Signature = SIWESignature;
+    type Err = VerificationError;
     async fn verify(
         payload: &<Eip4361 as Representation>::Payload,
         sig: &Self::Signature,
     ) -> Result<(), VerificationError> {
-        let m: Message = payload
-            .clone()
-            .try_into()
-            .map_err(|_| VerificationError::MissingVerificationMaterial)?;
+        let m: Message = payload.clone().try_into()?;
         m.verify_eip191(&sig)?;
         Ok(())
     }

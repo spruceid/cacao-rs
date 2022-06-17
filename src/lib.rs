@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use libipld::{cbor::DagCbor, DagCbor, Ipld};
 pub use siwe;
-use thiserror::Error;
 
 pub mod siwe_cacao;
 
@@ -45,7 +44,7 @@ where
         &self.s
     }
 
-    pub async fn verify(&self) -> Result<(), VerificationError>
+    pub async fn verify(&self) -> Result<(), S::Err>
     where
         S: Send + Sync,
         S::Signature: Send + Sync,
@@ -68,11 +67,12 @@ where
     T: Representation,
 {
     type Signature: Debug;
-    async fn verify(payload: &T::Payload, sig: &Self::Signature) -> Result<(), VerificationError>
+    type Err;
+    async fn verify(payload: &T::Payload, sig: &Self::Signature) -> Result<(), Self::Err>
     where
         Self::Signature: Send + Sync;
 
-    async fn verify_cacao(cacao: &CACAO<Self, T>) -> Result<(), VerificationError>
+    async fn verify_cacao(cacao: &CACAO<Self, T>) -> Result<(), Self::Err>
     where
         Self: Sized,
         Self::Signature: Send + Sync + Debug + DagCbor,
@@ -81,22 +81,6 @@ where
     {
         Self::verify(cacao.payload(), cacao.signature()).await
     }
-}
-
-#[derive(Error, Debug)]
-pub enum VerificationError {
-    #[error("Verification Failed")]
-    Crypto,
-    #[error("Normalisation of verification input failed")]
-    Serialization,
-    #[error("Missing Payload Verification Material")]
-    MissingVerificationMaterial,
-    #[error("Not Currently Valid")]
-    NotCurrentlyValid,
-    #[error("Domain does not match")]
-    DomainMismatch,
-    #[error("Nonce does noe match")]
-    NonceMismatch,
 }
 
 #[derive(DagCbor)]
