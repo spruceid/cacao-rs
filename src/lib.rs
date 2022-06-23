@@ -6,7 +6,7 @@ pub use siwe;
 
 pub mod siwe_cacao;
 
-#[derive(DagCbor, Debug)]
+#[derive(DagCbor, Debug, Clone)]
 pub struct CACAO<S, T>
 where
     S: SignatureScheme<T>,

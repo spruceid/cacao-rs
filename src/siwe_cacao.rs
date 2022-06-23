@@ -22,7 +22,7 @@ use thiserror::Error;
 
 pub type SiweCacao = CACAO<Eip191, Eip4361>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Header;
 
 #[derive(Clone, Debug)]
@@ -193,6 +193,7 @@ mod payload_ipld {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Eip4361;
 
 impl Representation for Eip4361 {
@@ -287,7 +288,7 @@ impl From<Message> for Payload {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SIWESignature([u8; 65]);
 
 impl std::ops::Deref for SIWESignature {
@@ -361,7 +362,7 @@ impl Decode<DagCborCodec> for SIWESignature {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Eip191;
 
 #[async_trait]
