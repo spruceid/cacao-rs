@@ -6,7 +6,7 @@ pub use siwe;
 
 pub mod siwe_cacao;
 
-#[derive(DagCbor, Debug, Clone)]
+#[derive(DagCbor, Debug, Clone, PartialEq)]
 pub struct CACAO<S, T>
 where
     S: SignatureScheme<T>,
@@ -83,29 +83,19 @@ where
     }
 }
 
-#[derive(DagCbor)]
-pub struct CACAOIpld<P, H>
-where
-    H: DagCbor,
-    P: DagCbor,
-{
-    #[ipld(rename = "h")]
-    header: H,
-    #[ipld(rename = "p")]
-    payload: P,
-    #[ipld(rename = "s")]
-    signature: Ipld,
-}
-
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use libipld::{cbor::DagCborCodec, codec::Decode};
-    use siwe_cacao::{Header, Payload};
+    use libipld::{
+        cbor::DagCborCodec,
+        codec::{assert_roundtrip, Decode},
+        ipld,
+    };
+    use siwe_cacao::SiweCacao;
     use std::io::Cursor;
     #[test]
     fn test_ipld() {
-        let _cacao = CACAOIpld::<Payload, Header>::decode(
+        let cacao = SiweCacao::decode(
             DagCborCodec,
             &mut Cursor::new([
                 163u8, 97u8, 104u8, 161u8, 97u8, 116u8, 103u8, 101u8, 105u8, 112u8, 52u8, 51u8,
@@ -140,20 +130,43 @@ pub mod tests {
                 114u8, 109u8, 115u8, 32u8, 111u8, 102u8, 32u8, 83u8, 101u8, 114u8, 118u8, 105u8,
                 99u8, 101u8, 58u8, 32u8, 104u8, 116u8, 116u8, 112u8, 115u8, 58u8, 47u8, 47u8,
                 115u8, 101u8, 114u8, 118u8, 105u8, 99u8, 101u8, 46u8, 111u8, 114u8, 103u8, 47u8,
-                116u8, 111u8, 115u8, 97u8, 115u8, 162u8, 97u8, 115u8, 120u8, 132u8, 48u8, 120u8,
-                49u8, 48u8, 57u8, 51u8, 49u8, 51u8, 101u8, 55u8, 53u8, 50u8, 53u8, 100u8, 101u8,
-                97u8, 53u8, 53u8, 101u8, 99u8, 57u8, 97u8, 51u8, 99u8, 99u8, 98u8, 98u8, 54u8,
-                51u8, 101u8, 97u8, 56u8, 100u8, 54u8, 56u8, 52u8, 48u8, 54u8, 51u8, 54u8, 54u8,
-                50u8, 53u8, 48u8, 99u8, 102u8, 48u8, 56u8, 56u8, 48u8, 100u8, 54u8, 55u8, 48u8,
-                51u8, 50u8, 98u8, 52u8, 53u8, 55u8, 97u8, 98u8, 51u8, 51u8, 99u8, 57u8, 50u8, 54u8,
-                99u8, 54u8, 55u8, 102u8, 102u8, 51u8, 102u8, 99u8, 99u8, 54u8, 54u8, 97u8, 99u8,
-                51u8, 49u8, 98u8, 97u8, 97u8, 54u8, 56u8, 54u8, 56u8, 97u8, 56u8, 48u8, 97u8, 49u8,
-                50u8, 102u8, 98u8, 101u8, 54u8, 98u8, 55u8, 54u8, 51u8, 56u8, 97u8, 56u8, 57u8,
-                102u8, 52u8, 102u8, 54u8, 100u8, 53u8, 49u8, 97u8, 48u8, 50u8, 50u8, 57u8, 53u8,
-                57u8, 48u8, 99u8, 102u8, 54u8, 54u8, 55u8, 54u8, 102u8, 49u8, 99u8, 97u8, 116u8,
-                102u8, 101u8, 105u8, 112u8, 49u8, 57u8, 49u8,
+                116u8, 111u8, 115u8, 97u8, 115u8, 162u8, 97u8, 115u8, 152u8, 65u8, 16u8, 24u8,
+                147u8, 19u8, 24u8, 231u8, 24u8, 82u8, 24u8, 93u8, 24u8, 234u8, 24u8, 85u8, 24u8,
+                236u8, 24u8, 154u8, 24u8, 60u8, 24u8, 203u8, 24u8, 182u8, 24u8, 62u8, 24u8, 168u8,
+                24u8, 214u8, 24u8, 132u8, 6u8, 24u8, 54u8, 24u8, 98u8, 24u8, 80u8, 24u8, 207u8,
+                8u8, 24u8, 128u8, 24u8, 214u8, 24u8, 112u8, 24u8, 50u8, 24u8, 180u8, 24u8, 87u8,
+                24u8, 171u8, 24u8, 51u8, 24u8, 201u8, 24u8, 38u8, 24u8, 198u8, 24u8, 127u8, 24u8,
+                243u8, 24u8, 252u8, 24u8, 198u8, 24u8, 106u8, 24u8, 195u8, 24u8, 27u8, 24u8, 170u8,
+                24u8, 104u8, 24u8, 104u8, 24u8, 168u8, 10u8, 18u8, 24u8, 251u8, 24u8, 230u8, 24u8,
+                183u8, 24u8, 99u8, 24u8, 138u8, 24u8, 137u8, 24u8, 244u8, 24u8, 246u8, 24u8, 213u8,
+                24u8, 26u8, 2u8, 24u8, 41u8, 24u8, 89u8, 12u8, 24u8, 246u8, 24u8, 103u8, 24u8,
+                111u8, 24u8, 28u8, 97u8, 116u8, 102u8, 101u8, 105u8, 112u8, 49u8, 57u8, 49u8,
             ]),
         )
         .unwrap();
+
+        let ipld = ipld!({
+          "h": {
+            "t": "eip4361",
+          },
+          "p": {
+            "aud": "did:key:z6MkrBdNdwUPnXDVD1DCxedzVVBpaGi8aSmoXFAeKNgtAer8",
+            "domain": "service.org",
+            "iat": "2021-09-30T16:25:24.000Z",
+            "iss": "did:pkh:eip155:1:0xBd9D9c7DC389715a89fC8149E4a5Be91336B2796",
+            "nonce": "32891757",
+            "resources": [
+              "ipfs://Qme7ss3ARVgxv6rXqVPiikMJ8u2NLgmgszg13pYrDKEoiu",
+              "https://example.com/my-web2-claim.json",
+            ],
+            "statement": "I accept the ServiceOrg Terms of Service: https://service.org/tos",
+            "version": "1",
+          },
+          "s": {
+            "s": [0x10, 0x93, 0x13, 0xe7, 0x52, 0x5d, 0xea, 0x55, 0xec, 0x9a, 0x3c, 0xcb, 0xb6, 0x3e, 0xa8, 0xd6, 0x84, 0x06, 0x36, 0x62, 0x50, 0xcf, 0x08, 0x80, 0xd6, 0x70, 0x32, 0xb4, 0x57, 0xab, 0x33, 0xc9, 0x26, 0xc6, 0x7f, 0xf3, 0xfc, 0xc6, 0x6a, 0xc3, 0x1b, 0xaa, 0x68, 0x68, 0xa8, 0x0a, 0x12, 0xfb, 0xe6, 0xb7, 0x63, 0x8a, 0x89, 0xf4, 0xf6, 0xd5, 0x1a, 0x02, 0x29, 0x59, 0x0c, 0xf6, 0x67, 0x6f, 0x1c],
+            "t": "eip191",
+          },
+        });
+        assert_roundtrip(DagCborCodec, &cacao, &ipld);
     }
 }
