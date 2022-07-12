@@ -1,6 +1,6 @@
 [package]
 name = "cacaos"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Spruce Systems, Inc."]
 edition = "2021"
 license = "Apache-2.0"
@@ -20,7 +20,7 @@ thiserror = "1.0"
 url = "2.2"
 async-trait = "0.1"
 serde = "1.0"
-libipld = "0.12"
+libipld = "0.13"
 serde_with = "1.11"
 http = "0.2.5"
 hex = { version = "0.4", optional = true }

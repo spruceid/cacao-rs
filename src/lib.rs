@@ -1,53 +1,42 @@
 use std::fmt::Debug;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
-use http::uri::{Authority, InvalidUri};
-use iri_string::{
-    types::{UriAbsoluteString, UriString},
-    validate::Error as URIStringError,
-};
-use libipld::{
-    cbor::{DagCbor, DagCborCodec},
-    codec::{Decode, Encode},
-    DagCbor, Ipld,
-};
+use libipld::{cbor::DagCbor, DagCbor, Ipld};
 pub use siwe;
-use siwe::TimeStamp;
-use thiserror::Error;
 
-pub mod generic;
 pub mod siwe_cacao;
 
-#[derive(DagCbor, Debug)]
-pub struct CACAO<S>
+#[derive(DagCbor, Debug, Clone, PartialEq)]
+pub struct CACAO<S, T>
 where
-    S: SignatureScheme,
+    S: SignatureScheme<T>,
     S::Signature: DagCbor,
+    T: Representation,
 {
-    h: Header,
-    p: Payload,
+    h: T::Header,
+    p: T::Payload,
     s: S::Signature,
 }
 
-impl<S> CACAO<S>
+impl<S, R> CACAO<S, R>
 where
-    S: SignatureScheme,
+    S: SignatureScheme<R>,
     S::Signature: DagCbor,
+    R: Representation,
 {
-    pub fn new(p: Payload, s: S::Signature) -> Self {
+    pub fn new(p: R::Payload, s: S::Signature, h: Option<R::Header>) -> Self {
         Self {
-            h: S::header(),
+            h: h.unwrap_or_else(R::header),
             p,
             s,
         }
     }
 
-    pub fn header(&self) -> &Header {
+    pub fn header(&self) -> &R::Header {
         &self.h
     }
 
-    pub fn payload(&self) -> &Payload {
+    pub fn payload(&self) -> &R::Payload {
         &self.p
     }
 
@@ -55,257 +44,58 @@ where
         &self.s
     }
 
-    pub async fn verify(&self) -> Result<(), VerificationError>
+    pub async fn verify(&self) -> Result<(), S::Err>
     where
         S: Send + Sync,
         S::Signature: Send + Sync,
+        R::Payload: Send + Sync + Debug,
+        R::Header: Send + Sync + Debug,
     {
         S::verify_cacao(self).await
     }
 }
 
-#[derive(DagCbor, Debug)]
-pub struct Header {
-    t: String,
-}
-
-impl Header {
-    pub fn t<'a>(&'a self) -> &'a str {
-        &self.t.as_str()
-    }
+pub trait Representation {
+    type Payload: DagCbor;
+    type Header: DagCbor;
+    fn header() -> Self::Header;
 }
 
 #[async_trait]
-pub trait SignatureScheme: Debug {
+pub trait SignatureScheme<T>: Debug
+where
+    T: Representation,
+{
     type Signature: Debug;
-    fn id() -> String;
-    fn header() -> Header {
-        Header { t: Self::id() }
-    }
-    async fn verify(payload: &Payload, sig: &Self::Signature) -> Result<(), VerificationError>
+    type Err;
+    async fn verify(payload: &T::Payload, sig: &Self::Signature) -> Result<(), Self::Err>
     where
         Self::Signature: Send + Sync;
 
-    async fn verify_cacao(cacao: &CACAO<Self>) -> Result<(), VerificationError>
+    async fn verify_cacao(cacao: &CACAO<Self, T>) -> Result<(), Self::Err>
     where
         Self: Sized,
-        Self::Signature: Send + Sync + DagCbor + Debug,
+        Self::Signature: Send + Sync + Debug + DagCbor,
+        T::Payload: Send + Sync + Debug,
+        T::Header: Send + Sync + Debug,
     {
         Self::verify(cacao.payload(), cacao.signature()).await
     }
 }
 
-#[derive(Error, Debug)]
-pub enum VerificationError {
-    #[error("Verification Failed")]
-    Crypto,
-    #[error("Normalisation of verification input failed")]
-    Serialization,
-    #[error("Missing Payload Verification Material")]
-    MissingVerificationMaterial,
-    #[error("Not Currently Valid")]
-    NotCurrentlyValid,
-    #[error("Domain does not match")]
-    DomainMismatch,
-    #[error("Nonce does noe match")]
-    NonceMismatch,
-}
-
-#[derive(DagCbor, Debug)]
-pub struct BasicSignature<S>
-where
-    S: DagCbor + AsRef<[u8]> + TryFrom<Vec<u8>>,
-{
-    pub s: S,
-}
-
-impl<S> AsRef<[u8]> for BasicSignature<S>
-where
-    S: DagCbor + AsRef<[u8]> + TryFrom<Vec<u8>>,
-{
-    fn as_ref(&self) -> &[u8] {
-        self.s.as_ref()
-    }
-}
-
-impl<S> TryFrom<Vec<u8>> for BasicSignature<S>
-where
-    S: DagCbor + AsRef<[u8]> + TryFrom<Vec<u8>>,
-{
-    type Error = <S as TryFrom<Vec<u8>>>::Error;
-    fn try_from(s: Vec<u8>) -> Result<Self, Self::Error> {
-        Ok(Self { s: s.try_into()? })
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum Version {
-    V1 = 1,
-}
-
-#[derive(Clone, Debug)]
-pub struct Payload {
-    pub domain: Authority,
-    pub iss: UriAbsoluteString,
-    pub statement: Option<String>,
-    pub aud: UriString,
-    pub version: Version,
-    pub nonce: String,
-    pub iat: TimeStamp,
-    pub exp: Option<TimeStamp>,
-    pub nbf: Option<TimeStamp>,
-    pub request_id: Option<String>,
-    pub resources: Vec<UriString>,
-}
-impl Payload {
-    pub fn sign<S: SignatureScheme>(self, s: S::Signature) -> CACAO<S>
-    where
-        S::Signature: DagCbor + Debug,
-    {
-        CACAO {
-            h: S::header(),
-            p: self,
-            s,
-        }
-    }
-
-    pub async fn verify<S: SignatureScheme>(
-        &self,
-        s: &<S as SignatureScheme>::Signature,
-    ) -> Result<(), VerificationError>
-    where
-        S: Send + Sync,
-        S::Signature: Send + Sync,
-    {
-        S::verify(self, s).await
-    }
-
-    pub fn iss(&self) -> &str {
-        self.iss.as_str()
-    }
-
-    pub fn valid_at(&self, t: &DateTime<Utc>) -> bool {
-        self.nbf.as_ref().map(|nbf| nbf < t).unwrap_or(true)
-            && self.exp.as_ref().map(|exp| exp >= t).unwrap_or(true)
-    }
-
-    pub fn valid_now(&self) -> bool {
-        self.valid_at(&Utc::now())
-    }
-}
-
-mod payload_ipld {
-    use super::*;
-    use libipld::error::Error as IpldError;
-    use std::io::{Read, Seek, Write};
-
-    #[derive(Clone, DagCbor)]
-    struct TmpPayload {
-        aud: String,
-        #[ipld(default = None)]
-        exp: Option<String>,
-        iat: String,
-        iss: String,
-        #[ipld(default = None)]
-        nbf: Option<String>,
-        nonce: String,
-        domain: String,
-        version: String,
-        resources: Vec<String>,
-        #[ipld(rename = "requestId")]
-        #[ipld(default = None)]
-        request_id: Option<String>,
-        #[ipld(default = None)]
-        statement: Option<String>,
-    }
-
-    impl From<&Payload> for TmpPayload {
-        fn from(p: &Payload) -> Self {
-            Self {
-                domain: p.domain.to_string(),
-                iss: p.iss.to_string(),
-                statement: p.statement.as_ref().map(|e| e.to_string()),
-                aud: p.aud.to_string(),
-                version: (p.version as u64).to_string(),
-                nonce: p.nonce.to_string(),
-                iat: p.iat.to_string(),
-                exp: p.exp.as_ref().map(|e| e.to_string()),
-                nbf: p.nbf.as_ref().map(|e| e.to_string()),
-                request_id: p.request_id.clone(),
-                resources: p.resources.iter().map(|r| r.to_string()).collect(),
-            }
-        }
-    }
-
-    #[derive(Error, Debug)]
-    pub enum PayloadIpldParseError {
-        #[error(transparent)]
-        Domain(#[from] InvalidUri),
-        #[error(transparent)]
-        Uri(#[from] URIStringError),
-        #[error(transparent)]
-        TimeStamp(#[from] chrono::format::ParseError),
-    }
-
-    impl TryFrom<TmpPayload> for Payload {
-        type Error = PayloadIpldParseError;
-        fn try_from(p: TmpPayload) -> Result<Self, Self::Error> {
-            Ok(Self {
-                domain: p.domain.parse()?,
-                iss: p.iss.parse()?,
-                statement: p.statement,
-                aud: p.aud.parse()?,
-                version: Version::V1,
-                nonce: p.nonce,
-                iat: p.iat.parse()?,
-                exp: p.exp.map(|s| s.parse()).transpose()?,
-                nbf: p.nbf.map(|s| s.parse()).transpose()?,
-                request_id: p.request_id,
-                resources: p
-                    .resources
-                    .iter()
-                    .map(|r| r.parse())
-                    .collect::<Result<Vec<UriString>, URIStringError>>()?,
-            })
-        }
-    }
-
-    impl Encode<DagCborCodec> for Payload {
-        fn encode<W>(&self, c: DagCborCodec, w: &mut W) -> Result<(), IpldError>
-        where
-            W: Write,
-        {
-            TmpPayload::from(self).encode(c, w)
-        }
-    }
-
-    impl Decode<DagCborCodec> for Payload {
-        fn decode<R>(c: DagCborCodec, r: &mut R) -> Result<Self, IpldError>
-        where
-            R: Read + Seek,
-        {
-            TmpPayload::decode(c, r).and_then(|t| Ok(t.try_into()?))
-        }
-    }
-}
-
-#[derive(DagCbor)]
-pub struct CACAOIpld {
-    #[ipld(rename = "h")]
-    header: Header,
-    #[ipld(rename = "p")]
-    payload: Payload,
-    #[ipld(rename = "s")]
-    signature: Ipld,
-}
-
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use libipld::{
+        cbor::DagCborCodec,
+        codec::{assert_roundtrip, Decode},
+        ipld,
+    };
+    use siwe_cacao::SiweCacao;
     use std::io::Cursor;
     #[test]
     fn test_ipld() {
-        let _cacao = CACAOIpld::decode(
+        let cacao = SiweCacao::decode(
             DagCborCodec,
             &mut Cursor::new([
                 163u8, 97u8, 104u8, 161u8, 97u8, 116u8, 103u8, 101u8, 105u8, 112u8, 52u8, 51u8,
@@ -340,20 +130,43 @@ pub mod tests {
                 114u8, 109u8, 115u8, 32u8, 111u8, 102u8, 32u8, 83u8, 101u8, 114u8, 118u8, 105u8,
                 99u8, 101u8, 58u8, 32u8, 104u8, 116u8, 116u8, 112u8, 115u8, 58u8, 47u8, 47u8,
                 115u8, 101u8, 114u8, 118u8, 105u8, 99u8, 101u8, 46u8, 111u8, 114u8, 103u8, 47u8,
-                116u8, 111u8, 115u8, 97u8, 115u8, 162u8, 97u8, 115u8, 120u8, 132u8, 48u8, 120u8,
-                49u8, 48u8, 57u8, 51u8, 49u8, 51u8, 101u8, 55u8, 53u8, 50u8, 53u8, 100u8, 101u8,
-                97u8, 53u8, 53u8, 101u8, 99u8, 57u8, 97u8, 51u8, 99u8, 99u8, 98u8, 98u8, 54u8,
-                51u8, 101u8, 97u8, 56u8, 100u8, 54u8, 56u8, 52u8, 48u8, 54u8, 51u8, 54u8, 54u8,
-                50u8, 53u8, 48u8, 99u8, 102u8, 48u8, 56u8, 56u8, 48u8, 100u8, 54u8, 55u8, 48u8,
-                51u8, 50u8, 98u8, 52u8, 53u8, 55u8, 97u8, 98u8, 51u8, 51u8, 99u8, 57u8, 50u8, 54u8,
-                99u8, 54u8, 55u8, 102u8, 102u8, 51u8, 102u8, 99u8, 99u8, 54u8, 54u8, 97u8, 99u8,
-                51u8, 49u8, 98u8, 97u8, 97u8, 54u8, 56u8, 54u8, 56u8, 97u8, 56u8, 48u8, 97u8, 49u8,
-                50u8, 102u8, 98u8, 101u8, 54u8, 98u8, 55u8, 54u8, 51u8, 56u8, 97u8, 56u8, 57u8,
-                102u8, 52u8, 102u8, 54u8, 100u8, 53u8, 49u8, 97u8, 48u8, 50u8, 50u8, 57u8, 53u8,
-                57u8, 48u8, 99u8, 102u8, 54u8, 54u8, 55u8, 54u8, 102u8, 49u8, 99u8, 97u8, 116u8,
-                102u8, 101u8, 105u8, 112u8, 49u8, 57u8, 49u8,
+                116u8, 111u8, 115u8, 97u8, 115u8, 162u8, 97u8, 115u8, 152u8, 65u8, 16u8, 24u8,
+                147u8, 19u8, 24u8, 231u8, 24u8, 82u8, 24u8, 93u8, 24u8, 234u8, 24u8, 85u8, 24u8,
+                236u8, 24u8, 154u8, 24u8, 60u8, 24u8, 203u8, 24u8, 182u8, 24u8, 62u8, 24u8, 168u8,
+                24u8, 214u8, 24u8, 132u8, 6u8, 24u8, 54u8, 24u8, 98u8, 24u8, 80u8, 24u8, 207u8,
+                8u8, 24u8, 128u8, 24u8, 214u8, 24u8, 112u8, 24u8, 50u8, 24u8, 180u8, 24u8, 87u8,
+                24u8, 171u8, 24u8, 51u8, 24u8, 201u8, 24u8, 38u8, 24u8, 198u8, 24u8, 127u8, 24u8,
+                243u8, 24u8, 252u8, 24u8, 198u8, 24u8, 106u8, 24u8, 195u8, 24u8, 27u8, 24u8, 170u8,
+                24u8, 104u8, 24u8, 104u8, 24u8, 168u8, 10u8, 18u8, 24u8, 251u8, 24u8, 230u8, 24u8,
+                183u8, 24u8, 99u8, 24u8, 138u8, 24u8, 137u8, 24u8, 244u8, 24u8, 246u8, 24u8, 213u8,
+                24u8, 26u8, 2u8, 24u8, 41u8, 24u8, 89u8, 12u8, 24u8, 246u8, 24u8, 103u8, 24u8,
+                111u8, 24u8, 28u8, 97u8, 116u8, 102u8, 101u8, 105u8, 112u8, 49u8, 57u8, 49u8,
             ]),
         )
         .unwrap();
+
+        let ipld = ipld!({
+          "h": {
+            "t": "eip4361",
+          },
+          "p": {
+            "aud": "did:key:z6MkrBdNdwUPnXDVD1DCxedzVVBpaGi8aSmoXFAeKNgtAer8",
+            "domain": "service.org",
+            "iat": "2021-09-30T16:25:24.000Z",
+            "iss": "did:pkh:eip155:1:0xBd9D9c7DC389715a89fC8149E4a5Be91336B2796",
+            "nonce": "32891757",
+            "resources": [
+              "ipfs://Qme7ss3ARVgxv6rXqVPiikMJ8u2NLgmgszg13pYrDKEoiu",
+              "https://example.com/my-web2-claim.json",
+            ],
+            "statement": "I accept the ServiceOrg Terms of Service: https://service.org/tos",
+            "version": "1",
+          },
+          "s": {
+            "s": [0x10, 0x93, 0x13, 0xe7, 0x52, 0x5d, 0xea, 0x55, 0xec, 0x9a, 0x3c, 0xcb, 0xb6, 0x3e, 0xa8, 0xd6, 0x84, 0x06, 0x36, 0x62, 0x50, 0xcf, 0x08, 0x80, 0xd6, 0x70, 0x32, 0xb4, 0x57, 0xab, 0x33, 0xc9, 0x26, 0xc6, 0x7f, 0xf3, 0xfc, 0xc6, 0x6a, 0xc3, 0x1b, 0xaa, 0x68, 0x68, 0xa8, 0x0a, 0x12, 0xfb, 0xe6, 0xb7, 0x63, 0x8a, 0x89, 0xf4, 0xf6, 0xd5, 0x1a, 0x02, 0x29, 0x59, 0x0c, 0xf6, 0x67, 0x6f, 0x1c],
+            "t": "eip191",
+          },
+        });
+        assert_roundtrip(DagCborCodec, &cacao, &ipld);
     }
 }
