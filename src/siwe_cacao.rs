@@ -1,6 +1,6 @@
 use super::{Representation, SignatureScheme, CACAO};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+//use chrono::{DateTime, Utc};
 use ethers_core::{types::H160, utils::to_checksum};
 use hex::FromHex;
 use http::uri::Authority;
@@ -19,6 +19,8 @@ use siwe::{Message, TimeStamp, VerificationError as SVE, Version as SVersion};
 use std::fmt::Debug;
 use std::io::{Read, Seek, Write};
 use thiserror::Error;
+
+use time::OffsetDateTime;
 
 pub type SiweCacao = CACAO<Eip191, Eip4361>;
 
@@ -65,13 +67,14 @@ impl Payload {
         self.iss.as_str()
     }
 
-    pub fn valid_at(&self, t: &DateTime<Utc>) -> bool {
+    pub fn valid_at(&self, t: &OffsetDateTime) -> bool {
         self.nbf.as_ref().map(|nbf| nbf < t).unwrap_or(true)
             && self.exp.as_ref().map(|exp| exp >= t).unwrap_or(true)
     }
 
     pub fn valid_now(&self) -> bool {
-        self.valid_at(&Utc::now())
+        // self.valid_at(&Utc::now())
+        self.valid_at(&OffsetDateTime::now_utc())
     }
 }
 
