@@ -1,6 +1,6 @@
 [package]
 name = "cacaos"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Spruce Systems, Inc."]
 edition = "2021"
 license = "Apache-2.0"
@@ -14,7 +14,7 @@ eip4361 = ["hex", "ethers-core"]
 default = ["eip4361"]
 
 [dependencies]
-siwe = "0.3"
+siwe = "0.4"
 iri-string = { version = "0.4", features = ["serde", "serde-std"] }
 thiserror = "1.0"
 url = "2.2"
@@ -22,15 +22,10 @@ async-trait = "0.1"
 serde = "1.0"
 libipld = "0.13"
 serde_with = "1.11"
+time = { version = "0.3", features = ["parsing", "formatting"] }
 http = "0.2.5"
 hex = { version = "0.4", optional = true }
 ethers-core = { version = "0.6.2", optional = true }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-chrono = "0.4"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-chrono = { version = "0.4", features = ["wasmbind"] }
 
 [dev-dependencies]
 async-std = { version = "1.10", features = ["attributes"] }
