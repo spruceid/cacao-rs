@@ -1,6 +1,5 @@
 use super::{Representation, SignatureScheme, CACAO};
 use async_trait::async_trait;
-//use chrono::{DateTime, Utc};
 use ethers_core::{types::H160, utils::to_checksum};
 use hex::FromHex;
 use http::uri::Authority;
@@ -19,6 +18,7 @@ use siwe::{Message, TimeStamp, VerificationError as SVE, Version as SVersion};
 use std::fmt::Debug;
 use std::io::{Read, Seek, Write};
 use thiserror::Error;
+use time::OffsetDateTime;
 
 use time::OffsetDateTime;
 
@@ -73,7 +73,6 @@ impl Payload {
     }
 
     pub fn valid_now(&self) -> bool {
-        // self.valid_at(&Utc::now())
         self.valid_at(&OffsetDateTime::now_utc())
     }
 }
