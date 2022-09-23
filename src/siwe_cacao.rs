@@ -20,8 +20,6 @@ use std::io::{Read, Seek, Write};
 use thiserror::Error;
 use time::OffsetDateTime;
 
-use time::OffsetDateTime;
-
 pub type SiweCacao = CACAO<Eip191, Eip4361>;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
