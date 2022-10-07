@@ -366,7 +366,7 @@ impl Decode<DagCborCodec> for SIWESignature {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Default)]
 pub struct Eip191;
 
 #[async_trait]
@@ -385,35 +385,34 @@ impl SignatureScheme<Eip4361> for Eip191 {
 }
 
 #[cfg(feature = "eip1271")]
+pub use eip1271::*;
+
+#[cfg(feature = "eip1271")]
 mod eip1271 {
     use super::*;
     use ethers::prelude::*;
 
     #[derive(Debug, Clone)]
-    pub struct Eip1271(Provider<Http>);
+    pub struct Eip1271<R = Http>(Provider<R>);
 
-    impl From<Provider<Http>> for Eip1271 {
-        fn from(p: Provider<Http>) -> Self {
+    impl<R> From<Provider<R>> for Eip1271<R> {
+        fn from(p: Provider<R>) -> Self {
             Self(p)
         }
     }
 
-    impl<'a> TryFrom<&'a str> for Eip1271 {
-        type Error = <Provider<Http> as TryFrom<&'a str>>::Error;
+    impl<'a, R> TryFrom<&'a str> for Eip1271<R>
+    where
+        Provider<R>: TryFrom<&'a str>,
+    {
+        type Error = <Provider<R> as TryFrom<&'a str>>::Error;
         fn try_from(s: &'a str) -> Result<Self, Self::Error> {
             s.try_into().map(Self)
         }
     }
 
-    impl std::str::FromStr for Eip1271 {
-        type Err = <Self as TryFrom<&'static str>>::Error;
-        fn from_str(s: &str) -> Result<Self, Self::Err> {
-            s.try_into()
-        }
-    }
-
     #[async_trait]
-    impl SignatureScheme<Eip4361> for Eip1271 {
+    impl SignatureScheme<Eip4361> for Eip1271<Http> {
         type Signature = Eip1271Signature;
         type Err = VerificationError;
         async fn verify(
