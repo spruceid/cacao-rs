@@ -14,8 +14,7 @@ eip4361 = ["hex", "ethers-core"]
 default = ["eip4361"]
 
 [dependencies]
-# siwe = "0.4.2"
-siwe = { git = "https://github.com/spruceid/siwe-rs.git" }
+siwe = "0.5"
 iri-string = { version = "0.6", features = ["serde"] }
 thiserror = "1.0"
 url = "2.2"
