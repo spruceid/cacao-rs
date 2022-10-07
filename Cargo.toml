@@ -10,8 +10,9 @@ repository = "https://github.com/spruceid/cacao-rs/"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
+default = ["eip4361", "eip1271"]
 eip4361 = ["hex", "ethers-core"]
-default = ["eip4361"]
+eip1271 = ["siwe/ethers", "eip4361", "ethers"]
 
 [dependencies]
 # siwe = "0.4.2"
@@ -26,7 +27,9 @@ serde_with = "2.0"
 time = { version = "0.3", features = ["parsing", "formatting"] }
 http = "0.2.5"
 hex = { version = "0.4", optional = true }
+ethers = { version = "0.17.0", optional = true }
 ethers-core = { version = "0.17.0", optional = true }
+
 
 [dev-dependencies]
 async-std = { version = "1.10", features = ["attributes"] }

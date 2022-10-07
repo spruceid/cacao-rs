@@ -46,12 +46,22 @@ where
 
     pub async fn verify(&self) -> Result<(), S::Err>
     where
+        S: Send + Sync + Default,
+        S::Signature: Send + Sync,
+        R::Payload: Send + Sync + Debug,
+        R::Header: Send + Sync + Debug,
+    {
+        self.verify_opts(&S::default()).await
+    }
+
+    pub async fn verify_opts(&self, verifier: &S) -> Result<(), S::Err>
+    where
         S: Send + Sync,
         S::Signature: Send + Sync,
         R::Payload: Send + Sync + Debug,
         R::Header: Send + Sync + Debug,
     {
-        S::verify_cacao(self).await
+        verifier.verify_cacao(self).await
     }
 }
 
@@ -68,18 +78,18 @@ where
 {
     type Signature: Debug;
     type Err;
-    async fn verify(payload: &T::Payload, sig: &Self::Signature) -> Result<(), Self::Err>
+    async fn verify(&self, payload: &T::Payload, sig: &Self::Signature) -> Result<(), Self::Err>
     where
         Self::Signature: Send + Sync;
 
-    async fn verify_cacao(cacao: &CACAO<Self, T>) -> Result<(), Self::Err>
+    async fn verify_cacao(&self, cacao: &CACAO<Self, T>) -> Result<(), Self::Err>
     where
         Self: Sized,
         Self::Signature: Send + Sync + Debug + DagCbor,
         T::Payload: Send + Sync + Debug,
         T::Header: Send + Sync + Debug,
     {
-        Self::verify(cacao.payload(), cacao.signature()).await
+        self.verify(cacao.payload(), cacao.signature()).await
     }
 }
 

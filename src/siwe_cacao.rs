@@ -53,12 +53,16 @@ impl Payload {
         CACAO::new(self, s, None)
     }
 
-    pub async fn verify<S: SignatureScheme<Eip4361>>(&self, s: &S::Signature) -> Result<(), S::Err>
+    pub async fn verify<S: SignatureScheme<Eip4361>>(
+        &self,
+        s: &S::Signature,
+        v: &S,
+    ) -> Result<(), S::Err>
     where
         S: Send + Sync,
         S::Signature: Send + Sync,
     {
-        S::verify(self, s).await
+        v.verify(self, s).await
     }
 
     pub fn iss(&self) -> &str {
@@ -370,12 +374,91 @@ impl SignatureScheme<Eip4361> for Eip191 {
     type Signature = SIWESignature;
     type Err = VerificationError;
     async fn verify(
+        &self,
         payload: &<Eip4361 as Representation>::Payload,
         sig: &Self::Signature,
     ) -> Result<(), VerificationError> {
         let m: Message = payload.clone().try_into()?;
         m.verify_eip191(&sig)?;
         Ok(())
+    }
+}
+
+#[cfg(feature = "eip1271")]
+mod eip1271 {
+    use super::*;
+    use ethers::prelude::*;
+
+    #[derive(Debug, Clone)]
+    pub struct Eip1271(Provider<Http>);
+
+    impl From<Provider<Http>> for Eip1271 {
+        fn from(p: Provider<Http>) -> Self {
+            Self(p)
+        }
+    }
+
+    impl<'a> TryFrom<&'a str> for Eip1271 {
+        type Error = <Provider<Http> as TryFrom<&'a str>>::Error;
+        fn try_from(s: &'a str) -> Result<Self, Self::Error> {
+            s.try_into().map(Self)
+        }
+    }
+
+    impl std::str::FromStr for Eip1271 {
+        type Err = <Self as TryFrom<&'static str>>::Error;
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            s.try_into()
+        }
+    }
+
+    #[async_trait]
+    impl SignatureScheme<Eip4361> for Eip1271 {
+        type Signature = Eip1271Signature;
+        type Err = VerificationError;
+        async fn verify(
+            &self,
+            payload: &<Eip4361 as Representation>::Payload,
+            sig: &Self::Signature,
+        ) -> Result<(), VerificationError> {
+            let m: Message = payload.clone().try_into()?;
+            m.verify_eip1271(&sig.0, &self.0).await?;
+            Ok(())
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Eip1271Signature(Vec<u8>);
+
+    impl From<Vec<u8>> for Eip1271Signature {
+        fn from(v: Vec<u8>) -> Self {
+            Self(v)
+        }
+    }
+
+    impl Encode<DagCborCodec> for Eip1271Signature {
+        fn encode<W>(&self, c: DagCborCodec, w: &mut W) -> Result<(), IpldError>
+        where
+            W: Write,
+        {
+            DummySig {
+                s: self.0.to_vec(),
+                t: "eip1271".to_string(),
+            }
+            .encode(c, w)
+        }
+    }
+
+    impl Decode<DagCborCodec> for Eip1271Signature {
+        fn decode<R>(c: DagCborCodec, r: &mut R) -> Result<Self, IpldError>
+        where
+            R: Read + Seek,
+        {
+            match DummySig::decode(c, r)? {
+                d if d.t == "eip1271" => Ok(d.s.try_into()?),
+                d => Err(SIWESignatureDecodeError::InvalidType(d.t))?,
+            }
+        }
     }
 }
 
@@ -404,12 +487,12 @@ Issued At: 2021-12-07T18:28:18.807Z"#,
         .unwrap()
         .into();
         // correct signature
-        Eip191::verify(&message, &<Vec<u8>>::from_hex(r#"6228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap().try_into().unwrap())
+        Eip191.verify(&message, &<Vec<u8>>::from_hex(r#"6228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap().try_into().unwrap())
             .await
             .unwrap();
 
         // incorrect signature
-        assert!(Eip191::verify(&message, &<Vec<u8>>::from_hex(r#"7228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap().try_into().unwrap())
+        assert!(Eip191.verify(&message, &<Vec<u8>>::from_hex(r#"7228b3ecd7bf2df018183aeab6b6f1db1e9f4e3cbe24560404112e25363540eb679934908143224d746bbb5e1aa65ab435684081f4dbb74a0fec57f98f40f5051c"#).unwrap().try_into().unwrap())
             .await
             .is_err());
     }
