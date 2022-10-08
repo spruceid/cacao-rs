@@ -1,6 +1,5 @@
 use super::{Representation, SignatureScheme, CACAO};
 use async_trait::async_trait;
-use ethers_core::{types::H160, utils::to_checksum};
 use hex::FromHex;
 use http::uri::Authority;
 use iri_string::{
@@ -14,7 +13,7 @@ use libipld::{
     DagCbor,
 };
 pub use siwe;
-use siwe::{Message, TimeStamp, VerificationError as SVE, Version as SVersion};
+use siwe::{eip55, Message, TimeStamp, VerificationError as SVE, Version as SVersion};
 use std::fmt::Debug;
 use std::io::{Read, Seek, Write};
 use thiserror::Error;
@@ -268,13 +267,9 @@ impl From<Message> for Payload {
     fn from(m: Message) -> Self {
         Self {
             domain: m.domain,
-            iss: format!(
-                "did:pkh:eip155:{}:{}",
-                m.chain_id,
-                to_checksum(&H160(m.address), None)
-            )
-            .parse()
-            .unwrap(),
+            iss: format!("did:pkh:eip155:{}:{}", m.chain_id, eip55(&m.address))
+                .parse()
+                .unwrap(),
             statement: m.statement,
             aud: m.uri,
             version: m.version.into(),
