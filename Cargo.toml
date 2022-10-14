@@ -20,7 +20,7 @@ thiserror = "1.0"
 url = "2.2"
 async-trait = "0.1"
 serde = "1.0"
-libipld = "0.14"
+libipld = { version = "0.14", default-features = false, features = ["dag-cbor", "derive"]}
 serde_with = "2.0"
 time = { version = "0.3", features = ["parsing", "formatting"] }
 http = "0.2.5"
