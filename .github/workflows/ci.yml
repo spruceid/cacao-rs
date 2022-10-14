@@ -31,3 +31,9 @@ jobs:
 
     - name: Test
       run: cargo test
+
+    - name: Fmt
+      run: cargo fmt -- --check
+
+    - name: Clippy
+      run: RUSTFLAGS="-Dwarnings" cargo clippy
