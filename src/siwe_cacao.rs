@@ -21,10 +21,10 @@ use time::OffsetDateTime;
 
 pub type SiweCacao = CACAO<Eip191, Eip4361>;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Header;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Payload {
     pub domain: Authority,
     pub iss: UriAbsoluteString,
@@ -39,7 +39,7 @@ pub struct Payload {
     pub resources: Vec<UriString>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Version {
     V1 = 1,
 }
@@ -154,7 +154,7 @@ mod payload_ipld {
         where
             R: Read + Seek,
         {
-            TmpPayload::decode(c, r).and_then(|t| Ok(t.try_into()?))
+            TmpPayload::decode(c, r).and_then(|t| t.try_into())
         }
     }
 
@@ -192,7 +192,7 @@ mod payload_ipld {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Eip4361;
 
 impl Representation for Eip4361 {
@@ -283,7 +283,7 @@ impl From<Message> for Payload {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SIWESignature([u8; 65]);
 
 impl std::ops::Deref for SIWESignature {
@@ -357,7 +357,7 @@ impl Decode<DagCborCodec> for SIWESignature {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Eip191;
 
 #[async_trait]
@@ -369,7 +369,7 @@ impl SignatureScheme<Eip4361> for Eip191 {
         sig: &Self::Signature,
     ) -> Result<(), VerificationError> {
         let m: Message = payload.clone().try_into()?;
-        m.verify_eip191(&sig)?;
+        m.verify_eip191(sig)?;
         Ok(())
     }
 }
