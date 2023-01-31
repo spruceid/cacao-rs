@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use async_trait::async_trait;
-use libipld::{cbor::DagCbor, DagCbor, Ipld};
+use libipld::{cbor::DagCbor, DagCbor};
 pub use siwe;
 
 pub mod siwe_cacao;
