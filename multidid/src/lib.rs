@@ -1,10 +1,7 @@
 use iri_string::types::{UriFragmentString, UriQueryString, UriRelativeString};
+use leb128::{read, write};
 use serde::{Deserialize, Serialize};
 use std::io::{Error as IoError, Read, Write};
-use unsigned_varint::{
-    encode::{u64 as write_u64, u64_buffer},
-    io::read_u64,
-};
 
 const RAW_CODEC: u64 = 0x55;
 const PKH_CODEC: u64 = 0xca;
@@ -52,7 +49,7 @@ impl MultiDid {
         self.query.as_ref()
     }
 
-    pub fn to_vec(&self) -> Result<Vec<u8>, Error> {
+    pub fn to_vec(&self) -> Result<Vec<u8>, IoError> {
         let mut buf = Vec::new();
         self.to_writer(&mut buf)?;
         Ok(buf)
@@ -73,7 +70,7 @@ impl MultiDid {
 
         let method = Method::from_reader(reader)?;
 
-        let param_len = read_u64(reader.by_ref())?;
+        let param_len = read::unsigned(reader)?;
 
         let (fragment, query) = if param_len > 0 {
             let mut param_buf = vec![0; param_len as usize];
@@ -90,32 +87,31 @@ impl MultiDid {
         Ok(Self::new(method, fragment, query))
     }
 
-    pub fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+    pub fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), IoError> {
         self.method.to_writer(writer)?;
-        let mut buf = u64_buffer();
         match (&self.fragment, &self.query) {
             (Some(fragment), Some(query)) => {
-                writer.write(write_u64(
+                write::unsigned(
+                    writer,
                     (fragment.as_str().len() + query.as_str().len() + 2) as u64,
-                    &mut buf,
-                ))?;
+                )?;
                 writer.write_all(b"#")?;
                 writer.write_all(fragment.as_str().as_bytes())?;
                 writer.write_all(b"?")?;
                 writer.write_all(query.as_str().as_bytes())?;
             }
             (Some(fragment), None) => {
-                writer.write(write_u64((fragment.as_str().len() + 1) as u64, &mut buf))?;
+                write::unsigned(writer, (fragment.as_str().len() + 1) as u64)?;
                 writer.write_all(b"#")?;
                 writer.write_all(fragment.as_str().as_bytes())?;
             }
             (None, Some(query)) => {
-                writer.write(write_u64((query.as_str().len() + 1) as u64, &mut buf))?;
+                write::unsigned(writer, (query.as_str().len() + 1) as u64)?;
                 writer.write_all(b"?")?;
                 writer.write_all(query.as_str().as_bytes())?;
             }
             (None, None) => {
-                writer.write(write_u64(0, &mut buf))?;
+                write::unsigned(writer, 0)?;
             }
         };
         Ok(())
@@ -132,7 +128,7 @@ pub enum Method {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
-    Varint(#[from] unsigned_varint::io::ReadError),
+    Leb128(#[from] leb128::read::Error),
     #[error(transparent)]
     Io(#[from] IoError),
     #[error("Invalid multidid varint prefix, expected 0x9d1a, recieved {0:x}")]
@@ -154,16 +150,16 @@ impl Method {
     }
 
     fn from_reader<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        let codec = read_u64(reader.by_ref())?;
+        let codec = read::unsigned(reader)?;
         match codec {
             RAW_CODEC => {
-                let len = read_u64(reader.by_ref())?;
+                let len = read::unsigned(reader)?;
                 let mut buf = vec![0; len as usize];
                 reader.read_exact(&mut buf)?;
                 Ok(Self::Raw(String::from_utf8(buf)?))
             }
             PKH_CODEC => {
-                let len = read_u64(reader.by_ref())?;
+                let len = read::unsigned(reader)?;
                 let mut buf = vec![0; len as usize];
                 reader.read_exact(&mut buf)?;
                 Ok(Self::Pkh(buf))
@@ -176,15 +172,14 @@ impl Method {
     }
 
     fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), IoError> {
-        let mut vi_buf = u64_buffer();
-        writer.write(write_u64(self.codec(), &mut vi_buf))?;
+        write::unsigned(writer, self.codec())?;
         match self {
             Self::Raw(buf) => {
-                writer.write(write_u64(buf.as_bytes().len() as u64, &mut vi_buf))?;
+                write::unsigned(writer, buf.as_bytes().len() as u64)?;
                 writer.write_all(buf.as_bytes())?;
             }
             Self::Pkh(buf) => {
-                writer.write(write_u64(buf.len() as u64, &mut vi_buf))?;
+                write::unsigned(writer, buf.len() as u64)?;
                 writer.write_all(buf)?;
             }
             Self::Key(key) => {
@@ -225,9 +220,9 @@ impl DidKeyTypes {
 
     fn from_reader<R>(reader: &mut R) -> Result<Self, Error>
     where
-        R: Read,
+        R: ?Sized + Read,
     {
-        let codec = read_u64(reader.by_ref())?;
+        let codec = read::unsigned(reader)?;
         match codec {
             SECP256K1_CODEC => {
                 let mut buf = [0; 33];
@@ -277,8 +272,7 @@ impl DidKeyTypes {
     where
         W: ?Sized + Write,
     {
-        let mut buf = u64_buffer();
-        writer.write(write_u64(self.codec(), &mut buf))?;
+        write::unsigned(writer, self.codec())?;
         writer.write_all(&self.bytes())
     }
 
