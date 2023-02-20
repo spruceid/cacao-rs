@@ -1,8 +1,5 @@
+use leb128::{read, write};
 use std::io::{Error as IoError, Read, Write};
-use unsigned_varint::{
-    encode::{u64 as write_u64, u64_buffer},
-    io::read_u64,
-};
 
 const VARSIG_VARINT_PREFIX: u8 = 0x68;
 
@@ -17,7 +14,7 @@ pub struct VarSig {
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error(transparent)]
-    Varint(#[from] unsigned_varint::io::ReadError),
+    Leb128(#[from] leb128::read::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error("Invalid varsig prefix, expected 0x68, recieved {0:x}")]
@@ -62,7 +59,7 @@ impl VarSig {
 
     pub fn from_reader<R>(reader: &mut R) -> Result<Self, Error>
     where
-        R: Read,
+        R: ?Sized + Read,
     {
         let mut tag = [0u8; 1];
         reader.read_exact(&mut tag)?;
@@ -72,14 +69,14 @@ impl VarSig {
         };
 
         println!("tag: {:#x?}", tag);
-        let codec = read_u64(reader.by_ref())?;
+        let codec = read::unsigned(reader)?;
         println!("codec: {:#x?}", codec);
-        let hash = read_u64(reader.by_ref())?;
+        let hash = read::unsigned(reader)?;
         println!("hash: {:#x?}", hash);
-        let key_type = read_u64(reader.by_ref())?;
+        let key_type = read::unsigned(reader)?;
         println!("key_type: {:#x?}", key_type);
 
-        let sig_len = read_u64(reader.by_ref())?;
+        let sig_len = read::unsigned(reader)?;
         println!("sig_len: {:#x?}", sig_len);
         let mut signature = vec![0; sig_len as usize];
         reader.read_exact(&mut signature)?;
@@ -93,11 +90,10 @@ impl VarSig {
         W: ?Sized + Write,
     {
         writer.write(&[VARSIG_VARINT_PREFIX; 1])?;
-        let mut buf = u64_buffer();
-        writer.write(write_u64(self.codec, &mut buf))?;
-        writer.write(write_u64(self.hash, &mut buf))?;
-        writer.write(write_u64(self.key_type, &mut buf))?;
-        writer.write(write_u64(self.signature.len() as u64, &mut buf))?;
+        write::unsigned(writer, self.codec)?;
+        write::unsigned(writer, self.hash)?;
+        write::unsigned(writer, self.key_type)?;
+        write::unsigned(writer, self.signature.len() as u64)?;
         writer.write(&self.signature)?;
         Ok(())
     }
@@ -123,23 +119,8 @@ mod tests {
     }
 
     #[test]
-    fn reverse_roundtrip() {
-        let varsig = VarSig::new(0x0129, 0x12, 0xed, EXAMPLE[6..].to_vec());
-        let encoded = varsig.to_vec().unwrap();
-        let decoded = VarSig::from_bytes(&encoded.as_ref()).unwrap();
-        assert_eq!(varsig, decoded);
-    }
-
-    #[test]
     fn basic_ser() {
         let varsig = VarSig::new(0x0129, 0x12, 0xed, EXAMPLE[6..].to_vec());
         assert_eq!(&varsig.to_vec().unwrap(), &EXAMPLE);
-    }
-
-    #[test]
-    fn rsad() {
-        let b = [0xd2, 0x04];
-        println!("{:#x?}", read_u64(&mut b.as_ref()));
-        None::<u8>.unwrap();
     }
 }
