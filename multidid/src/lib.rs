@@ -333,11 +333,11 @@ impl DidKeyTypes {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::{Deserialize, Serialize};
+    use serde::Deserialize;
     use serde_with::{hex::Hex, serde_as};
 
     #[serde_as]
-    #[derive(Serialize, Deserialize)]
+    #[derive(Deserialize)]
     struct ValidTest {
         #[serde_as(as = "Hex")]
         encoded: Vec<u8>,
@@ -353,11 +353,16 @@ mod tests {
     fn it_works() {
         let valid: Vec<ValidTest> = serde_json::from_str(VALID_JSON).unwrap();
         for test in valid {
-            println!("{:?}", test.decoded);
             let did = MultiDid::from_reader(&mut test.encoded.as_slice()).unwrap();
             assert_eq!(did.query, test.query);
             assert_eq!(did.fragment, test.fragment);
             assert_eq!(did.to_vec().unwrap(), test.encoded);
+            assert!(match (did.method(), test.method.as_str()) {
+                (Method::Key(_), "key") => true,
+                (Method::Pkh(_), "pkh") => true,
+                (Method::Raw(_), "raw") => true,
+                _ => false,
+            });
         }
     }
 }
