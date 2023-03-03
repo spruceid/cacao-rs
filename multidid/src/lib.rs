@@ -1,5 +1,4 @@
 use iri_string::types::{UriFragmentString, UriQueryString, UriReferenceString, UriRelativeString};
-use serde::{Deserialize, Serialize};
 use std::io::{Error as IoError, Read, Write};
 use unsigned_varint::{
     encode::{u64 as write_u64, u64_buffer},
@@ -77,7 +76,10 @@ impl MultiDid {
             Method::Raw(raw) => {
                 let r = UriReferenceString::try_from(raw.as_bytes())?;
                 Self::new(
-                    Method::Raw(r.path_str().to_string()),
+                    Method::Raw(match r.scheme_str() {
+                        Some(s) => format!("{}:{}", s, r.path_str()),
+                        None => r.path_str().to_string(),
+                    }),
                     r.fragment().map(|f| f.to_owned()),
                     r.query().map(|q| q.to_owned()),
                 )
@@ -102,10 +104,14 @@ impl MultiDid {
     }
 
     pub fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        self.method.to_writer(writer)?;
+        writer.write_all(&MULTIDID_VARINT_TAG.to_be_bytes())?;
+        // write codec
+        let mut buf = u64_buffer();
+        writer.write_all(write_u64(self.method.codec(), &mut buf))?;
+
         match self.method {
             Method::Pkh(_) | Method::Key(_) => {
-                let mut buf = u64_buffer();
+                self.method.to_writer(writer)?;
                 let len: u64 = (self
                     .fragment
                     .as_ref()
@@ -118,7 +124,21 @@ impl MultiDid {
                         .unwrap_or(0)) as u64;
                 writer.write_all(write_u64(len, &mut buf))?;
             }
-            _ => {}
+            Method::Raw(ref raw) => {
+                let len: u64 = (self
+                    .fragment
+                    .as_ref()
+                    .map(|f| f.as_str().len() + 1)
+                    .unwrap_or(0)
+                    + self
+                        .query
+                        .as_ref()
+                        .map(|q| q.as_str().len() + 1)
+                        .unwrap_or(0)
+                    + raw.len()) as u64;
+                writer.write_all(write_u64(len, &mut buf))?;
+                writer.write_all(raw.as_bytes())?;
+            }
         };
         match (&self.fragment, &self.query) {
             (Some(fragment), Some(query)) => {
@@ -187,22 +207,20 @@ impl Method {
                 reader.read_exact(&mut buf)?;
                 Ok(Self::Pkh(buf))
             }
-            _ => {
-                let key = DidKeyTypes::from_reader(reader)?;
+            codec => {
+                let key = DidKeyTypes::from_reader(reader, codec)?;
                 Ok(Self::Key(key))
             }
         }
     }
 
     fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), IoError> {
-        let mut vi_buf = u64_buffer();
-        writer.write(write_u64(self.codec(), &mut vi_buf))?;
         match self {
             Self::Raw(buf) => {
-                writer.write_all(write_u64(buf.as_bytes().len() as u64, &mut vi_buf))?;
                 writer.write_all(buf.as_bytes())?;
             }
             Self::Pkh(buf) => {
+                let mut vi_buf = u64_buffer();
                 writer.write_all(write_u64(buf.len() as u64, &mut vi_buf))?;
                 writer.write_all(buf)?;
             }
@@ -242,11 +260,10 @@ impl DidKeyTypes {
         }
     }
 
-    fn from_reader<R>(reader: &mut R) -> Result<Self, Error>
+    fn from_reader<R>(reader: &mut R, codec: u64) -> Result<Self, Error>
     where
         R: Read,
     {
-        let codec = read_u64(reader.by_ref())?;
         match codec {
             SECP256K1_CODEC => {
                 let mut buf = [0; 33];
@@ -296,8 +313,6 @@ impl DidKeyTypes {
     where
         W: ?Sized + Write,
     {
-        let mut buf = u64_buffer();
-        writer.write_all(write_u64(self.codec(), &mut buf))?;
         writer.write_all(&self.bytes())
     }
 
@@ -318,19 +333,31 @@ impl DidKeyTypes {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::{Deserialize, Serialize};
+    use serde_with::{hex::Hex, serde_as};
 
-    const VALID_TESTS: [(&str, &str); 1] = [(
-        r"9d1a550e6578616d706c653a313233343536",
-        r"did:example:123456",
-    )];
+    #[serde_as]
+    #[derive(Serialize, Deserialize)]
+    struct ValidTest {
+        #[serde_as(as = "Hex")]
+        encoded: Vec<u8>,
+        decoded: String,
+        method: String,
+        query: Option<UriQueryString>,
+        fragment: Option<UriFragmentString>,
+    }
 
-    const VALID: [u8; 18] = [
-        0x9d, 0x1a, 0x55, 0x0e, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x3a, 0x31, 0x32, 0x33,
-        0x34, 0x35, 0x36,
-    ];
+    const VALID_JSON: &str = include_str!("../tests/valid.json");
 
     #[test]
     fn it_works() {
-        let did = MultiDid::from_reader(&mut &VALID[..]).unwrap();
+        let valid: Vec<ValidTest> = serde_json::from_str(VALID_JSON).unwrap();
+        for test in valid {
+            println!("{:?}", test.decoded);
+            let did = MultiDid::from_reader(&mut test.encoded.as_slice()).unwrap();
+            assert_eq!(did.query, test.query);
+            assert_eq!(did.fragment, test.fragment);
+            assert_eq!(did.to_vec().unwrap(), test.encoded);
+        }
     }
 }
