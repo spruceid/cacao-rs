@@ -1,4 +1,4 @@
-use iri_string::types::{UriFragmentString, UriQueryString, UriRelativeString};
+use iri_string::types::{UriFragmentString, UriQueryString, UriReferenceString, UriRelativeString};
 use serde::{Deserialize, Serialize};
 use std::io::{Error as IoError, Read, Write};
 use unsigned_varint::{
@@ -73,50 +73,69 @@ impl MultiDid {
 
         let method = Method::from_reader(reader)?;
 
-        let param_len = read_u64(reader.by_ref())?;
+        Ok(match method {
+            Method::Raw(raw) => {
+                let r = UriReferenceString::try_from(raw.as_bytes())?;
+                Self::new(
+                    Method::Raw(r.path_str().to_string()),
+                    r.fragment().map(|f| f.to_owned()),
+                    r.query().map(|q| q.to_owned()),
+                )
+            }
+            Method::Pkh(_) | Method::Key(_) => {
+                let param_len = read_u64(reader.by_ref())?;
 
-        let (fragment, query) = if param_len > 0 {
-            let mut param_buf = vec![0; param_len as usize];
-            reader.read_exact(&mut param_buf)?;
-            let r = UriRelativeString::try_from(param_buf.as_slice())?;
-            (
-                r.fragment().map(|f| f.to_owned()),
-                r.query().map(|q| q.to_owned()),
-            )
-        } else {
-            (None, None)
-        };
-
-        Ok(Self::new(method, fragment, query))
+                let (fragment, query) = if param_len > 0 {
+                    let mut param_buf = vec![0; param_len as usize];
+                    reader.read_exact(&mut param_buf)?;
+                    let r = UriRelativeString::try_from(param_buf.as_slice())?;
+                    (
+                        r.fragment().map(|f| f.to_owned()),
+                        r.query().map(|q| q.to_owned()),
+                    )
+                } else {
+                    (None, None)
+                };
+                Self::new(method, fragment, query)
+            }
+        })
     }
 
     pub fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.method.to_writer(writer)?;
-        let mut buf = u64_buffer();
+        match self.method {
+            Method::Pkh(_) | Method::Key(_) => {
+                let mut buf = u64_buffer();
+                let len: u64 = (self
+                    .fragment
+                    .as_ref()
+                    .map(|f| f.as_str().len() + 1)
+                    .unwrap_or(0)
+                    + self
+                        .query
+                        .as_ref()
+                        .map(|q| q.as_str().len() + 1)
+                        .unwrap_or(0)) as u64;
+                writer.write_all(write_u64(len, &mut buf))?;
+            }
+            _ => {}
+        };
         match (&self.fragment, &self.query) {
             (Some(fragment), Some(query)) => {
-                writer.write(write_u64(
-                    (fragment.as_str().len() + query.as_str().len() + 2) as u64,
-                    &mut buf,
-                ))?;
                 writer.write_all(b"#")?;
                 writer.write_all(fragment.as_str().as_bytes())?;
                 writer.write_all(b"?")?;
                 writer.write_all(query.as_str().as_bytes())?;
             }
             (Some(fragment), None) => {
-                writer.write(write_u64((fragment.as_str().len() + 1) as u64, &mut buf))?;
                 writer.write_all(b"#")?;
                 writer.write_all(fragment.as_str().as_bytes())?;
             }
             (None, Some(query)) => {
-                writer.write(write_u64((query.as_str().len() + 1) as u64, &mut buf))?;
                 writer.write_all(b"?")?;
                 writer.write_all(query.as_str().as_bytes())?;
             }
-            (None, None) => {
-                writer.write(write_u64(0, &mut buf))?;
-            }
+            (None, None) => {}
         };
         Ok(())
     }
@@ -180,11 +199,11 @@ impl Method {
         writer.write(write_u64(self.codec(), &mut vi_buf))?;
         match self {
             Self::Raw(buf) => {
-                writer.write(write_u64(buf.as_bytes().len() as u64, &mut vi_buf))?;
+                writer.write_all(write_u64(buf.as_bytes().len() as u64, &mut vi_buf))?;
                 writer.write_all(buf.as_bytes())?;
             }
             Self::Pkh(buf) => {
-                writer.write(write_u64(buf.len() as u64, &mut vi_buf))?;
+                writer.write_all(write_u64(buf.len() as u64, &mut vi_buf))?;
                 writer.write_all(buf)?;
             }
             Self::Key(key) => {
@@ -278,7 +297,7 @@ impl DidKeyTypes {
         W: ?Sized + Write,
     {
         let mut buf = u64_buffer();
-        writer.write(write_u64(self.codec(), &mut buf))?;
+        writer.write_all(write_u64(self.codec(), &mut buf))?;
         writer.write_all(&self.bytes())
     }
 
@@ -300,6 +319,18 @@ impl DidKeyTypes {
 mod tests {
     use super::*;
 
+    const VALID_TESTS: [(&str, &str); 1] = [(
+        r"9d1a550e6578616d706c653a313233343536",
+        r"did:example:123456",
+    )];
+
+    const VALID: [u8; 18] = [
+        0x9d, 0x1a, 0x55, 0x0e, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x3a, 0x31, 0x32, 0x33,
+        0x34, 0x35, 0x36,
+    ];
+
     #[test]
-    fn it_works() {}
+    fn it_works() {
+        let did = MultiDid::from_reader(&mut &VALID[..]).unwrap();
+    }
 }
