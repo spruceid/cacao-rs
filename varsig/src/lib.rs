@@ -1,7 +1,7 @@
 use leb128::{read, write};
 use std::io::{Error as IoError, Read, Write};
 
-const VARSIG_VARINT_PREFIX: u8 = 0x68;
+const VARSIG_PREFIX: u64 = 0x34;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarSig {
@@ -17,8 +17,8 @@ pub enum Error {
     Leb128(#[from] leb128::read::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
-    #[error("Invalid varsig prefix, expected 0x68, recieved {0:x}")]
-    InvalidPrefix(u8),
+    #[error("Invalid varsig prefix, expected 0x34, recieved {0:x}")]
+    InvalidPrefix(u64),
 }
 
 impl VarSig {
@@ -61,26 +61,19 @@ impl VarSig {
     where
         R: ?Sized + Read,
     {
-        let mut tag = [0u8; 1];
-        reader.read_exact(&mut tag)?;
+        let tag = read::unsigned(reader)?;
 
-        if tag[0] != VARSIG_VARINT_PREFIX {
-            return Err(Error::InvalidPrefix(tag[0]));
+        if tag != VARSIG_PREFIX {
+            return Err(Error::InvalidPrefix(tag));
         };
 
-        println!("tag: {:#x?}", tag);
         let codec = read::unsigned(reader)?;
-        println!("codec: {:#x?}", codec);
         let hash = read::unsigned(reader)?;
-        println!("hash: {:#x?}", hash);
         let key_type = read::unsigned(reader)?;
-        println!("key_type: {:#x?}", key_type);
 
         let sig_len = read::unsigned(reader)?;
-        println!("sig_len: {:#x?}", sig_len);
         let mut signature = vec![0; sig_len as usize];
         reader.read_exact(&mut signature)?;
-        println!("signature: {:#x?}", signature);
 
         Ok(Self::new(codec, hash, key_type, signature))
     }
@@ -89,7 +82,7 @@ impl VarSig {
     where
         W: ?Sized + Write,
     {
-        writer.write(&[VARSIG_VARINT_PREFIX; 1])?;
+        write::unsigned(writer, VARSIG_PREFIX)?;
         write::unsigned(writer, self.codec)?;
         write::unsigned(writer, self.hash)?;
         write::unsigned(writer, self.key_type)?;
