@@ -1,18 +1,24 @@
-use crate::{DidKeyTypes, Error};
+use crate::{pkh::PKH_CODEC, DidKeyTypes, DidPkhTypes, Error};
 use std::io::{Error as IoError, Read, Write};
-use unsigned_varint::{
-    encode::{u64 as write_u64, u64_buffer},
-    io::read_u64,
-};
+use unsigned_varint::io::read_u64;
 
 const RAW_CODEC: u64 = 0x55;
-const PKH_CODEC: u64 = 0xca;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Method {
-    Pkh(Vec<u8>),
+    Pkh(DidPkhTypes),
     Key(DidKeyTypes),
     Raw(String),
+}
+
+impl std::fmt::Display for Method {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Method::Raw(raw) => write!(f, "did:{}", raw),
+            Method::Key(key) => write!(f, "did:key:{}", key),
+            Method::Pkh(pkh) => write!(f, "did:pkh:{}", pkh),
+        }
+    }
 }
 
 impl Method {
@@ -20,7 +26,7 @@ impl Method {
         use Method::*;
         match self {
             Raw(_) => RAW_CODEC,
-            Pkh(_) => PKH_CODEC,
+            Pkh(h) => h.codec(),
             Key(k) => k.codec(),
         }
     }
@@ -34,12 +40,7 @@ impl Method {
                 reader.read_exact(&mut buf)?;
                 Ok(Self::Raw(String::from_utf8(buf)?))
             }
-            PKH_CODEC => {
-                let len = read_u64(reader.by_ref())?;
-                let mut buf = vec![0; len as usize];
-                reader.read_exact(&mut buf)?;
-                Ok(Self::Pkh(buf))
-            }
+            PKH_CODEC => Ok(Self::Pkh(DidPkhTypes::from_reader(reader)?)),
             codec => {
                 let key = DidKeyTypes::from_reader(reader, codec)?;
                 Ok(Self::Key(key))
@@ -52,10 +53,8 @@ impl Method {
             Self::Raw(buf) => {
                 writer.write_all(buf.as_bytes())?;
             }
-            Self::Pkh(buf) => {
-                let mut vi_buf = u64_buffer();
-                writer.write_all(write_u64(buf.len() as u64, &mut vi_buf))?;
-                writer.write_all(buf)?;
+            Self::Pkh(pkh) => {
+                pkh.to_writer(writer)?;
             }
             Self::Key(key) => {
                 key.to_writer(writer)?;
