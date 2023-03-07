@@ -8,9 +8,11 @@ use unsigned_varint::{
 mod error;
 mod key;
 mod method;
+mod pkh;
 
 pub use error::Error;
 pub use key::DidKeyTypes;
+pub use pkh::DidPkhTypes;
 pub use method::Method;
 
 const MULTIDID_VARINT_TAG: u16 = 0x9d1a;
@@ -20,6 +22,19 @@ pub struct MultiDid {
     method: Method,
     fragment: Option<UriFragmentString>,
     query: Option<UriQueryString>,
+}
+
+impl std::fmt::Display for MultiDid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.method)?;
+        if let Some(fragment) = &self.fragment {
+            write!(f, "#{}", fragment)?;
+        }
+        if let Some(query) = &self.query {
+            write!(f, "?{}", query)?;
+        }
+        Ok(())
+    }
 }
 
 impl MultiDid {
