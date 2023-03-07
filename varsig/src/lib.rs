@@ -4,32 +4,46 @@ use unsigned_varint::{
     io::read_u64,
 };
 
-const VARSIG_VARINT_PREFIX: u8 = 0x68;
+const VARSIG_VARINT_PREFIX: u8 = 0x34;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct VarSig {
+pub struct VarSig<H> {
     codec: u64,
     hash: u64,
-    key_type: u64,
-    signature: Vec<u8>,
+    signature: H,
+}
+
+pub trait SignatureHeader {
+    type SerError: std::error::Error + std::fmt::Debug;
+    type DeserError: std::error::Error + std::fmt::Debug;
+    fn from_reader<R>(reader: &mut R) -> Result<Self, Self::DeserError>
+    where
+        Self: Sized,
+        R: Read;
+    fn to_writer<W>(&self, writer: &mut W) -> Result<(), Self::SerError>
+    where
+        W: ?Sized + Write;
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
+pub enum Error<S: SignatureHeader> {
     #[error(transparent)]
     Varint(#[from] unsigned_varint::io::ReadError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error("Invalid varsig prefix, expected 0x68, recieved {0:x}")]
     InvalidPrefix(u8),
+    #[error(transparent)]
+    SignatureDeser(S::DeserError),
+    #[error(transparent)]
+    SignatureSer(S::SerError),
 }
 
-impl VarSig {
-    pub fn new(codec: u64, hash: u64, key_type: u64, signature: Vec<u8>) -> Self {
+impl<H> VarSig<H> {
+    pub fn new(codec: u64, hash: u64, signature: H) -> Self {
         Self {
             codec,
             hash,
-            key_type,
             signature,
         }
     }
@@ -42,25 +56,26 @@ impl VarSig {
         self.hash
     }
 
-    pub fn key_type(&self) -> u64 {
-        self.key_type
-    }
-
-    pub fn signature(&self) -> &[u8] {
+    pub fn signature(&self) -> &H {
         &self.signature
     }
+}
 
+impl<H> VarSig<H>
+where
+    H: SignatureHeader,
+{
     pub fn to_vec(&self) -> Result<Vec<u8>, IoError> {
         let mut buf = Vec::new();
         self.to_writer(&mut buf)?;
         Ok(buf)
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error<H>> {
         Self::from_reader(&mut bytes.as_ref())
     }
 
-    pub fn from_reader<R>(reader: &mut R) -> Result<Self, Error>
+    pub fn from_reader<R>(reader: &mut R) -> Result<Self, Error<H>>
     where
         R: Read,
     {
@@ -71,24 +86,14 @@ impl VarSig {
             return Err(Error::InvalidPrefix(tag[0]));
         };
 
-        println!("tag: {:#x?}", tag);
         let codec = read_u64(reader.by_ref())?;
-        println!("codec: {:#x?}", codec);
         let hash = read_u64(reader.by_ref())?;
-        println!("hash: {:#x?}", hash);
-        let key_type = read_u64(reader.by_ref())?;
-        println!("key_type: {:#x?}", key_type);
+        let signature = H::from_reader(reader.by_ref()).map_err(Error::SignatureDeser)?;
 
-        let sig_len = read_u64(reader.by_ref())?;
-        println!("sig_len: {:#x?}", sig_len);
-        let mut signature = vec![0; sig_len as usize];
-        reader.read_exact(&mut signature)?;
-        println!("signature: {:#x?}", signature);
-
-        Ok(Self::new(codec, hash, key_type, signature))
+        Ok(Self::new(codec, hash, signature))
     }
 
-    pub fn to_writer<W>(&self, writer: &mut W) -> Result<(), IoError>
+    pub fn to_writer<W>(&self, writer: &mut W) -> Result<(), Error<H>>
     where
         W: ?Sized + Write,
     {
@@ -96,9 +101,9 @@ impl VarSig {
         let mut buf = u64_buffer();
         writer.write(write_u64(self.codec, &mut buf))?;
         writer.write(write_u64(self.hash, &mut buf))?;
-        writer.write(write_u64(self.key_type, &mut buf))?;
-        writer.write(write_u64(self.signature.len() as u64, &mut buf))?;
-        writer.write(&self.signature)?;
+        self.signature
+            .to_writer(writer)
+            .map_err(Error::SignatureSer)?;
         Ok(())
     }
 }
