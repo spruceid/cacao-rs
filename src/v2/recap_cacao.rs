@@ -3,6 +3,7 @@ use http::uri::Authority;
 use iri_string::types::UriString;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_with::{serde_as, DeserializeFromStr, DisplayFromStr, SerializeDisplay};
 pub use siwe;
 use siwe::{eip55, Message, TimeStamp, VerificationError as SVE, Version as SVersion};
 use std::fmt::Debug;
@@ -12,6 +13,7 @@ use time::OffsetDateTime;
 
 pub type RecapCacao<NB = Value> = CACAO<RecapFacts, NB>;
 
+#[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecapFacts {
     #[serde(rename = "iat-z")]
@@ -20,6 +22,7 @@ pub struct RecapFacts {
     nbf_time_zone: Option<String>,
     #[serde(rename = "nbf-z")]
     exp_time_zone: Option<String>,
+    #[serde_as(as = "DisplayFromStr")]
     domain: Authority,
     statement: Option<String>,
     #[serde(rename = "request-id")]

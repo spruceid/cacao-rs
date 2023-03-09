@@ -12,8 +12,8 @@ mod pkh;
 
 pub use error::Error;
 pub use key::DidKeyTypes;
-pub use pkh::DidPkhTypes;
 pub use method::Method;
+pub use pkh::DidPkhTypes;
 
 const MULTIDID_VARINT_TAG: u16 = 0x9d1a;
 
@@ -62,10 +62,13 @@ impl MultiDid {
         self.query.as_ref()
     }
 
-    pub fn to_vec(&self) -> Result<Vec<u8>, Error> {
-        let mut buf = Vec::new();
-        self.to_writer(&mut buf)?;
-        Ok(buf)
+    pub fn to_vec(&self) -> Vec<u8> {
+        match (self.query, self.fragment) {
+            (Some(q), Some(f)) => {}
+            (None, Some(f)) => {}
+            (Some(q), None) => {}
+            (None, None) => self.method.to_vec(),
+        }
     }
 
     pub fn from_bytes(b: &[u8]) -> Result<Self, Error> {

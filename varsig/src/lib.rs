@@ -1,8 +1,12 @@
-use std::io::{Error as IoError, Read, Write};
+use std::io::{Read, Write};
 use unsigned_varint::{
     encode::{u64 as write_u64, u64_buffer},
     io::read_u64,
 };
+pub mod eip191;
+pub mod either;
+
+pub use either::EitherSignature;
 
 const VARSIG_VARINT_PREFIX: u8 = 0x34;
 
@@ -31,7 +35,7 @@ pub enum Error<S: SignatureHeader> {
     Varint(#[from] unsigned_varint::io::ReadError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
-    #[error("Invalid varsig prefix, expected 0x68, recieved {0:x}")]
+    #[error("Invalid varsig prefix, expected 0x34, recieved {0:x}")]
     InvalidPrefix(u8),
     #[error(transparent)]
     SignatureDeser(S::DeserError),
@@ -65,7 +69,7 @@ impl<H> VarSig<H>
 where
     H: SignatureHeader,
 {
-    pub fn to_vec(&self) -> Result<Vec<u8>, IoError> {
+    pub fn to_vec(&self) -> Result<Vec<u8>, Error<H>> {
         let mut buf = Vec::new();
         self.to_writer(&mut buf)?;
         Ok(buf)
