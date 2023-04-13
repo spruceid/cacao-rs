@@ -11,9 +11,11 @@ pub use ed25519::{Ed25519, Ed25519Error};
 pub use rsa::{Rsa256, Rsa512, RsaError};
 
 #[derive(thiserror::Error, Debug)]
-pub enum CommonError {
+pub enum CommonError<const HASH: u64, const ENCODING: u64> {
     #[error(transparent)]
     Varint(#[from] unsigned_varint::decode::Error),
-    #[error("Incorrect hash code, expected {0:x}, got {1:x}")]
-    IncorrectHash(u64, u64),
+    #[error("Incorrect hash code, expected {:x}, got {1:x}", HASH)]
+    IncorrectHash(u64),
+    #[error("Incorrect encoding, expected {:x}, got {0:x}", ENCODING)]
+    IncorrectEncoding(u64),
 }
