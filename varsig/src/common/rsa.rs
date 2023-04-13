@@ -1,8 +1,7 @@
-use super::{SHA256, SHA512};
+use super::{CommonError, SHA256, SHA512};
 use crate::{DeserError, SerError, VarSigTrait};
 use std::io::{Read, Write};
 use unsigned_varint::{
-    decode::Error as VarintError,
     encode::{u64 as write_u64, u64_buffer},
     io::read_u64,
 };
@@ -29,13 +28,7 @@ impl<const HASH: u64> Rsa<HASH> {
 pub type Rsa256 = Rsa<{ SHA256 as u64 }>;
 pub type Rsa512 = Rsa<{ SHA512 as u64 }>;
 
-#[derive(thiserror::Error, Debug)]
-pub enum RsaError {
-    #[error(transparent)]
-    Varint(#[from] VarintError),
-    #[error("Incorrect hash code, expected {0}, got {1}")]
-    IncorrectHash(u64, u64),
-}
+pub type RsaError = CommonError;
 
 impl<const HASH: u64> VarSigTrait for Rsa<HASH> {
     type SerError = std::convert::Infallible;

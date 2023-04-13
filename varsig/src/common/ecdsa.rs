@@ -1,8 +1,7 @@
-use super::{KECCAK256, SHA256, SHA512};
+use super::{CommonError, KECCAK256, SHA256, SHA512};
 use crate::{DeserError, SerError, VarSigTrait};
 use std::io::{Read, Write};
 use unsigned_varint::{
-    decode::Error as VarintError,
     encode::{u64 as write_u64, u64_buffer},
     io::read_u64,
 };
@@ -34,13 +33,7 @@ pub type Es512 = Ecdsa<{ P521 as u64 }, { SHA512 as u64 }, 128>;
 
 pub type Eip191 = Ecdsa<{ K256 as u64 }, { KECCAK256 as u64 }, 65>;
 
-#[derive(thiserror::Error, Debug)]
-pub enum EcdsaError {
-    #[error(transparent)]
-    Varint(#[from] VarintError),
-    #[error("Incorrect hash code, expected {0}, got {1}")]
-    IncorrectHash(u64, u64),
-}
+pub type EcdsaError = CommonError;
 
 impl<const HEADER: u64, const HASH: u64, const LEN: usize> VarSigTrait
     for Ecdsa<HEADER, HASH, LEN>
