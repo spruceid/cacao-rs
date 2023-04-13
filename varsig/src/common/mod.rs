@@ -1,6 +1,6 @@
-mod ecdsa;
-mod ed25519;
-mod rsa;
+pub mod ecdsa;
+pub mod ed25519;
+pub mod rsa;
 
 const SHA256: u16 = 0x12;
 const SHA512: u16 = 0x13;
