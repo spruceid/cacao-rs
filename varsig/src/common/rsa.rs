@@ -8,6 +8,7 @@ use unsigned_varint::{
 
 pub const RSA: u16 = 0x1205;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rsa<const HASH: u64, const ENCODING: u64> {
     bytes: Vec<u8>,
 }

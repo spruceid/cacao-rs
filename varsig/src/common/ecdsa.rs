@@ -1,4 +1,4 @@
-use super::{CommonError, KECCAK256, SHA256, SHA512};
+use super::{CommonError, EIP191_ENCODING, KECCAK256, SHA256, SHA512};
 use crate::{DeserError, SerError, VarSigTrait};
 use std::io::{Read, Write};
 use unsigned_varint::{
@@ -10,6 +10,7 @@ pub const P256: u16 = 0x1200;
 pub const K256: u16 = 0xe7;
 pub const P521: u16 = 0x1202;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ecdsa<const HEADER: u64, const HASH: u64, const LEN: usize, const ENCODING: u64> {
     bytes: [u8; LEN],
 }
@@ -28,7 +29,8 @@ impl<const HEADER: u64, const HASH: u64, const LEN: usize, const ENCODING: u64>
 pub type Es256<const ENCODING: u64> = Ecdsa<{ P256 as u64 }, { SHA256 as u64 }, 64, ENCODING>;
 pub type Es256K<const ENCODING: u64> = Ecdsa<{ K256 as u64 }, { SHA256 as u64 }, 64, ENCODING>;
 pub type Es512<const ENCODING: u64> = Ecdsa<{ P521 as u64 }, { SHA512 as u64 }, 128, ENCODING>;
-pub type Eip191 = Ecdsa<{ K256 as u64 }, { KECCAK256 as u64 }, 65, 0x55>;
+pub type Ethereum<const ENCODING: u64> = Ecdsa<{ K256 as u64 }, { KECCAK256 as u64 }, 65, ENCODING>;
+pub type Eip191 = Ethereum<EIP191_ENCODING>;
 
 pub type EcdsaError<const HASH: u64, const ENCODING: u64> = CommonError<HASH, ENCODING>;
 

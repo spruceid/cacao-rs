@@ -8,6 +8,7 @@ use unsigned_varint::{
 
 pub const ED25519: u16 = 0xed;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ed25519<const ENCODING: u64> {
     bytes: [u8; 64],
 }
@@ -116,5 +117,13 @@ mod tests {
 
         assert_eq!(EXAMPLE, &buf);
         assert_eq!(decoded.sig().bytes().as_ref(), &EXAMPLE[4..]);
+    }
+
+    #[test]
+    fn enforce_encoding() {
+        match VarSig::<Ed25519<0x56>>::from_bytes(EXAMPLE) {
+            Err(crate::Error::Format(Ed25519Error::IncorrectEncoding(0x55))) => {}
+            _ => panic!("Expected error"),
+        };
     }
 }
