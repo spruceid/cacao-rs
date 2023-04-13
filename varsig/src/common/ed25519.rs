@@ -8,17 +8,13 @@ use unsigned_varint::{
 
 pub const ED25519: u16 = 0xed;
 
-pub struct Ed25519 {
-    encoding: u64,
+pub struct Ed25519<const ENCODING: u64> {
     bytes: [u8; 64],
 }
 
-impl Ed25519 {
-    pub fn new(encoding: u64, bytes: [u8; 64]) -> Self {
-        Self { encoding, bytes }
-    }
-    pub fn encoding(&self) -> u64 {
-        self.encoding
+impl<const ENCODING: u64> Ed25519<ENCODING> {
+    pub fn new(bytes: [u8; 64]) -> Self {
+        Self { bytes }
     }
     pub fn bytes(&self) -> &[u8; 64] {
         &self.bytes
@@ -26,14 +22,16 @@ impl Ed25519 {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum Ed25519Error {
+pub enum Ed25519Error<const ENCODING: u64> {
     #[error(transparent)]
     Varint(#[from] VarintError),
+    #[error("Incorrect encoding, expected {:x}, got {0:x}", ENCODING)]
+    IncorrectEncoding(u64),
 }
 
-impl VarSigTrait for Ed25519 {
+impl<const ENCODING: u64> VarSigTrait for Ed25519<ENCODING> {
     type SerError = std::convert::Infallible;
-    type DeserError = Ed25519Error;
+    type DeserError = Ed25519Error<ENCODING>;
 
     fn valid_header(bytes: &[u8]) -> bool {
         let mut buf = u64_buffer();
@@ -52,9 +50,15 @@ impl VarSigTrait for Ed25519 {
         };
 
         let encoding = read_u64(reader.by_ref())?;
+        if encoding != ENCODING {
+            return Err(DeserError::Format(Ed25519Error::IncorrectEncoding(
+                encoding,
+            )));
+        }
+
         let mut bytes = [0u8; 64];
         reader.read_exact(&mut bytes)?;
-        Ok(Self { encoding, bytes })
+        Ok(Self { bytes })
     }
 
     fn to_writer<W>(&self, writer: &mut W) -> Result<(), SerError<Self::SerError>>
@@ -63,7 +67,7 @@ impl VarSigTrait for Ed25519 {
     {
         let mut buf = u64_buffer();
         writer.write_all(write_u64(ED25519 as u64, &mut buf))?;
-        writer.write_all(write_u64(self.encoding, &mut buf))?;
+        writer.write_all(write_u64(ENCODING, &mut buf))?;
         writer.write_all(&self.bytes)?;
         Ok(())
     }
@@ -95,24 +99,22 @@ mod tests {
 
     #[test]
     fn basic_roundtrip_1() {
-        let decoded = VarSig::<Ed25519>::from_bytes(EXAMPLE).unwrap();
+        let decoded = VarSig::<Ed25519<0x55>>::from_bytes(EXAMPLE).unwrap();
         let encoded = decoded.to_vec().unwrap();
 
         assert_eq!(EXAMPLE, &encoded[..]);
-        assert_eq!(decoded.sig().encoding(), 0x55);
         assert_eq!(decoded.sig().bytes().as_ref(), &EXAMPLE[4..]);
     }
 
     #[test]
     fn basic_roundtrip_2() {
         let mut reader = EXAMPLE;
-        let decoded = VarSig::<Ed25519>::from_reader(&mut reader).unwrap();
+        let decoded = VarSig::<Ed25519<0x55>>::from_reader(&mut reader).unwrap();
 
         let mut buf = Vec::new();
         decoded.to_writer(&mut buf).unwrap();
 
         assert_eq!(EXAMPLE, &buf);
-        assert_eq!(decoded.sig().encoding(), 0x55);
         assert_eq!(decoded.sig().bytes().as_ref(), &EXAMPLE[4..]);
     }
 }
