@@ -1,5 +1,6 @@
 use std::io::{Read, Write};
 
+pub mod common;
 pub mod eip191;
 pub mod either;
 pub mod traits;
