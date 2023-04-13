@@ -12,7 +12,7 @@ pub const DAG_JSON_ENCODING: u64 = 0x0129;
 pub const DAG_PROTOBUF_ENCODING: u64 = 0x70;
 pub const DAG_CBOR_ENCODING: u64 = 0x71;
 
-pub use ecdsa::{EcdsaError, Eip191, Es256, Es256K, Es512};
+pub use ecdsa::{EcdsaError, Eip191, Es256, Es256K, Es512, Ethereum};
 pub use ed25519::{Ed25519, Ed25519Error};
 pub use rsa::{Rsa256, Rsa512, RsaError};
 
@@ -25,3 +25,10 @@ pub enum CommonError<const HASH: u64, const ENCODING: u64> {
     #[error("Incorrect encoding, expected {:x}, got {0:x}", ENCODING)]
     IncorrectEncoding(u64),
 }
+
+use crate::EitherSignature;
+
+pub type JoseCommon<const E: u64> = EitherSignature<
+    EitherSignature<EitherSignature<Es256<E>, Es512<E>>, EitherSignature<Rsa256<E>, Rsa512<E>>>,
+    EitherSignature<Ed25519<E>, Es256K<E>>,
+>;

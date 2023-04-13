@@ -1,6 +1,7 @@
 use crate::{DeserError, SerError, VarSigTrait};
 use std::io::{Read, Write};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EitherSignature<A, B> {
     A(A),
     B(B),
@@ -31,7 +32,7 @@ where
         Self: Sized,
     {
         // check the header to discern the sig type
-        let mut buf = [0u8; 4];
+        let mut buf = [0u8; 10];
         reader.read_exact(&mut buf)?;
 
         if A::valid_header(&buf) {
