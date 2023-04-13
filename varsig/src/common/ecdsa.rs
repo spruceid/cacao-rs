@@ -1,4 +1,4 @@
-use super::{SHA256, SHA512};
+use super::{KECCAK256, SHA256, SHA512};
 use crate::{DeserError, SerError, VarSigTrait};
 use std::io::{Read, Write};
 use unsigned_varint::{
@@ -31,6 +31,8 @@ impl<const HEADER: u64, const HASH: u64, const LEN: usize> Ecdsa<HEADER, HASH, L
 pub type Es256 = Ecdsa<{ P256 as u64 }, { SHA256 as u64 }, 64>;
 pub type Es256K = Ecdsa<{ K256 as u64 }, { SHA256 as u64 }, 64>;
 pub type Es512 = Ecdsa<{ P521 as u64 }, { SHA512 as u64 }, 128>;
+
+pub type Eip191 = Ecdsa<{ K256 as u64 }, { KECCAK256 as u64 }, 65>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum EcdsaError {
