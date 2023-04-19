@@ -10,9 +10,9 @@ pub use traits::{DeserError, SerError, VarSigTrait};
 const VARSIG_VARINT_PREFIX: u8 = 0x34;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VarSig<S: VarSigTrait>(S);
+pub struct VarSig<S>(S);
 
-impl<S: VarSigTrait> VarSig<S> {
+impl<S> VarSig<S> {
     pub fn new(s: S) -> Self {
         Self(s)
     }
@@ -20,7 +20,9 @@ impl<S: VarSigTrait> VarSig<S> {
     pub fn sig(&self) -> &S {
         &self.0
     }
+}
 
+impl<S: VarSigTrait> VarSig<S> {
     pub fn from_reader<R>(reader: &mut R) -> Result<Self, Error<S::DeserError>>
     where
         Self: Sized,
