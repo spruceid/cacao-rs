@@ -10,7 +10,7 @@ pub const P256: u16 = 0x1200;
 pub const K256: u16 = 0xe7;
 pub const P521: u16 = 0x1202;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Ecdsa<const HEADER: u64, const HASH: u64, const LEN: usize, const ENCODING: u64> {
     bytes: [u8; LEN],
 }
