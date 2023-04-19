@@ -63,10 +63,15 @@ impl MultiDid {
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
-        match (self.query, self.fragment) {
-            (Some(q), Some(f)) => {}
-            (None, Some(f)) => {}
-            (Some(q), None) => {}
+        match (&self.query, &self.fragment) {
+            (Some(q), Some(f)) => [
+                self.method.to_vec(),
+                q.as_str().as_bytes().to_vec(),
+                f.as_str().as_bytes().to_vec(),
+            ]
+            .concat(),
+            (None, Some(f)) => [self.method.to_vec(), f.as_str().as_bytes().to_vec()].concat(),
+            (Some(q), None) => [self.method.to_vec(), q.as_str().as_bytes().to_vec()].concat(),
             (None, None) => self.method.to_vec(),
         }
     }
@@ -201,7 +206,7 @@ mod tests {
             let did = MultiDid::from_reader(&mut test.encoded.as_slice()).unwrap();
             assert_eq!(did.query, test.query);
             assert_eq!(did.fragment, test.fragment);
-            assert_eq!(did.to_vec().unwrap(), test.encoded);
+            assert_eq!(did.to_vec(), test.encoded);
             assert!(match (did.method(), test.method.as_str()) {
                 (Method::Key(_), "key") => true,
                 (Method::Pkh(_), "pkh") => true,
