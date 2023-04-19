@@ -6,6 +6,8 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("Invalid multidid varint prefix, expected 0x9d1a, recieved {0:x}")]
     InvalidPrefix(u64),
+    #[error("Invalid did-pkh type varint: {0:x}")]
+    InvalidCodec(u64),
     #[error(transparent)]
     Parameter(#[from] iri_string::validate::Error),
     #[error(transparent)]
