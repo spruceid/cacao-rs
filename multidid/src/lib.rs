@@ -24,19 +24,6 @@ pub struct MultiDid {
     query: Option<UriQueryString>,
 }
 
-impl std::fmt::Display for MultiDid {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.method)?;
-        if let Some(fragment) = &self.fragment {
-            write!(f, "#{}", fragment)?;
-        }
-        if let Some(query) = &self.query {
-            write!(f, "?{}", query)?;
-        }
-        Ok(())
-    }
-}
-
 impl MultiDid {
     pub fn new(
         method: Method,

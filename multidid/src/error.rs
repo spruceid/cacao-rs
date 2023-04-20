@@ -12,4 +12,6 @@ pub enum Error {
     Parameter(#[from] iri_string::validate::Error),
     #[error(transparent)]
     DidParse(#[from] std::string::FromUtf8Error),
+    #[error("multidid formatting error: {0}")]
+    Format(&'static str),
 }
