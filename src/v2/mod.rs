@@ -1,56 +1,54 @@
-use std::fmt::Debug;
-
-use async_trait::async_trait;
-use iri_string::types::UriString;
 use libipld::cid::Cid;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use serde_with::{serde_as, serde_conv, DeserializeFromStr, SerializeDisplay};
-use std::collections::BTreeMap;
+use serde_with::serde_as;
+use std::fmt::Debug;
+use ucan_capabilities_object::Capabilities;
 
+pub mod either;
 pub mod recap_cacao;
+pub mod ucan_cacao;
+
+pub mod serde_util;
 
 use multidid::MultiDid;
-use varsig::{SignatureHeader, VarSig};
+use serde_util::{MultiDidAsBytes, VarSigAsBytes};
+use varsig::{VarSig, VarSigTrait};
 
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CACAO<P: CacaoProfile, NB = Value> {
+pub struct CACAO<S: VarSigTrait, F, NB = Value> {
+    #[serde_as(as = "MultiDidAsBytes")]
     #[serde(rename = "iss")]
     issuer: MultiDid,
+    #[serde_as(as = "MultiDidAsBytes")]
     #[serde(rename = "aud")]
     audience: MultiDid,
+    #[serde_as(as = "VarSigAsBytes")]
     #[serde(rename = "s")]
-    signature: VarSig<P::Signature>,
+    signature: VarSig<S>,
     #[serde(rename = "v")]
     version: String,
     #[serde(rename = "att")]
-    attenuations: BTreeMap<UriString, BTreeMap<String, Vec<BTreeMap<String, NB>>>>,
-    #[serde(rename = "nnc")]
-    nonce: String,
+    attenuations: Capabilities<NB>,
+    #[serde(rename = "nnc", skip_serializing_if = "Option::is_none")]
+    nonce: Option<String>,
     #[serde(rename = "prf", skip_serializing_if = "Vec::is_empty", default)]
     proof: Vec<Cid>,
-    #[serde(rename = "iat")]
+    #[serde(rename = "iat", skip_serializing_if = "Option::is_none", default)]
     issued_at: Option<u64>,
-    #[serde(rename = "nbf")]
+    #[serde(rename = "nbf", skip_serializing_if = "Option::is_none", default)]
     not_before: Option<u64>,
-    #[serde(rename = "exp")]
+    #[serde(rename = "exp", skip_serializing_if = "Option::is_none", default)]
     expiration: Option<u64>,
-    #[serde(rename = "fct")]
-    facts: P::Facts,
+    #[serde(rename = "fct", skip_serializing_if = "Option::is_none", default)]
+    facts: Option<F>,
 }
 
 pub trait CacaoProfile {
-    type Signature: SignatureHeader;
-    type Facts: for<'d> Deserialize<'d> + Serialize + Clone + Debug;
+    type Signature: VarSigTrait;
+    type Facts: Serialize + for<'d> Deserialize<'d>;
 }
-
-serde_conv!(
-    MultiDidToBytes,
-    MultiDid,
-    |did: &MultiDid| did.to_vec(),
-    |value: &[u8]| MultiDid::from_bytes(value)
-);
 
 #[cfg(test)]
 pub mod tests {
