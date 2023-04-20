@@ -11,16 +11,6 @@ pub enum Method {
     Raw(String),
 }
 
-impl std::fmt::Display for Method {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Method::Raw(raw) => write!(f, "did:{}", raw),
-            Method::Key(key) => write!(f, "did:key:{}", key),
-            Method::Pkh(pkh) => write!(f, "did:pkh:{}", pkh),
-        }
-    }
-}
-
 impl Method {
     pub fn codec(&self) -> u64 {
         use Method::*;
@@ -28,6 +18,14 @@ impl Method {
             Raw(_) => RAW_CODEC,
             Pkh(h) => h.codec(),
             Key(k) => k.codec(),
+        }
+    }
+
+    pub(crate) fn to_vec(&self) -> Vec<u8> {
+        match self {
+            Self::Raw(raw) => raw.as_bytes().to_vec(),
+            Self::Pkh(h) => h.to_vec(),
+            Self::Key(k) => k.bytes().to_vec(),
         }
     }
 

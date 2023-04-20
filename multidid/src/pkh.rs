@@ -67,10 +67,58 @@ impl DidPkhTypes {
         PKH_CODEC
     }
 
-    pub fn to_vec(&self) -> Result<Vec<u8>, IoError> {
-        let mut buf = Vec::new();
-        self.to_writer(&mut buf)?;
-        Ok(buf)
+    pub fn to_vec(&self) -> Vec<u8> {
+        let mut vec = Vec::new();
+        vec.push(PKH_CODEC as u8);
+        let mut buf = u64_buffer();
+        match self {
+            DidPkhTypes::Bip122(caip10) => {
+                vec.extend(write_u64(1, &mut buf));
+                vec.extend(caip10.chain_id());
+                vec.extend(caip10.address());
+            }
+            DidPkhTypes::Eip155(caip10) => {
+                vec.extend(write_u64(2, &mut buf));
+                vec.extend(write_u64(caip10.chain_id().len() as u64, &mut buf));
+                vec.extend(caip10.chain_id().as_bytes());
+                vec.extend(caip10.address());
+            }
+            DidPkhTypes::Cosmos(caip10) => {
+                vec.extend(write_u64(3, &mut buf));
+                vec.extend(write_u64(caip10.chain_id().len() as u64, &mut buf));
+                vec.extend(caip10.chain_id().as_bytes());
+                match caip10.address() {
+                    CosmosAddress::Secp256k1(address) => {
+                        vec.extend(write_u64(20, &mut buf));
+                        vec.extend(address);
+                    }
+                    CosmosAddress::Secp256r1(address) => {
+                        vec.extend(write_u64(32, &mut buf));
+                        vec.extend(address);
+                    }
+                }
+            }
+            DidPkhTypes::Starknet(caip10) => {
+                vec.extend(write_u64(3, &mut buf));
+                vec.extend(write_u64(caip10.chain_id().len() as u64, &mut buf));
+                vec.extend(caip10.chain_id().as_bytes());
+                vec.extend(caip10.address());
+            }
+            DidPkhTypes::Hedera(caip10) => {
+                vec.extend(write_u64(3, &mut buf));
+                vec.extend(write_u64(caip10.chain_id().len() as u64, &mut buf));
+                vec.extend(caip10.chain_id().as_bytes());
+                vec.extend(write_u64(caip10.address().0, &mut buf));
+                vec.extend(write_u64(caip10.address().1, &mut buf));
+                vec.extend(write_u64(caip10.address().2, &mut buf));
+            }
+            DidPkhTypes::Lip9(caip10) => {
+                vec.extend(write_u64(3, &mut buf));
+                vec.extend(caip10.chain_id());
+                vec.extend(caip10.address());
+            }
+        };
+        vec
     }
 
     pub fn from_reader<R>(reader: &mut R) -> Result<Self, Error>
@@ -96,7 +144,7 @@ impl DidPkhTypes {
             // ethereum-like
             2 => {
                 let ref_len = read_u64(reader.by_ref())?;
-                let chain_id = vec![0u8; ref_len as usize];
+                let mut chain_id = vec![0u8; ref_len as usize];
                 reader.read_exact(&mut chain_id)?;
                 let mut address = [0u8; 20];
                 reader.read_exact(&mut address)?;
@@ -108,7 +156,7 @@ impl DidPkhTypes {
             // cosmos
             3 => {
                 let ref_len = read_u64(reader.by_ref())?;
-                let chain_id = vec![0u8; ref_len as usize];
+                let mut chain_id = vec![0u8; ref_len as usize];
                 reader.read_exact(&mut chain_id)?;
                 let address_len = read_u64(reader.by_ref())?;
                 Ok(DidPkhTypes::Cosmos(Caip10::new(
@@ -124,13 +172,14 @@ impl DidPkhTypes {
                             reader.read_exact(&mut address)?;
                             CosmosAddress::Secp256r1(address)
                         }
+                        _ => return Err(Error::Format("Invalid cosmos address length")),
                     },
                 )))
             }
             // starknet
             4 => {
                 let ref_len = read_u64(reader.by_ref())?;
-                let chain_id = vec![0u8; ref_len as usize];
+                let mut chain_id = vec![0u8; ref_len as usize];
                 reader.read_exact(&mut chain_id)?;
                 let mut address = [0u8; 20];
                 reader.read_exact(&mut address)?;
@@ -142,7 +191,7 @@ impl DidPkhTypes {
             // hedera
             5 => {
                 let ref_len = read_u64(reader.by_ref())?;
-                let chain_id = vec![0u8; ref_len as usize];
+                let mut chain_id = vec![0u8; ref_len as usize];
                 reader.read_exact(&mut chain_id)?;
                 let shard = read_u64(reader.by_ref())?;
                 let realm = read_u64(reader.by_ref())?;
@@ -160,6 +209,7 @@ impl DidPkhTypes {
                 reader.read_exact(&mut address)?;
                 Ok(DidPkhTypes::Lip9(Caip10::new(chain_id, address)))
             }
+            _ => Err(Error::Format("Unsupported did-pkh discriminant")),
         }
     }
 

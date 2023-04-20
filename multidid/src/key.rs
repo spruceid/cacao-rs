@@ -24,12 +24,6 @@ pub enum DidKeyTypes {
     // RSA([u8; ??]),
 }
 
-impl std::fmt::Display for DidKeyTypes {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
-    }
-}
-
 impl DidKeyTypes {
     pub fn codec(&self) -> u64 {
         use DidKeyTypes::*;
