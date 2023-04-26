@@ -26,7 +26,7 @@ where
         A::valid_header(bytes) || B::valid_header(bytes)
     }
 
-    fn from_reader<R>(reader: &mut R) -> Result<Self, DeserError<Self::DeserError>>
+    fn from_reader<R>(mut reader: R) -> Result<Self, DeserError<Self::DeserError>>
     where
         R: Read,
         Self: Sized,
@@ -58,9 +58,9 @@ where
         }
     }
 
-    fn to_writer<W>(&self, writer: &mut W) -> Result<(), SerError<Self::SerError>>
+    fn to_writer<W>(&self, writer: W) -> Result<(), SerError<Self::SerError>>
     where
-        W: ?Sized + Write,
+        W: Write,
     {
         match self {
             Self::A(a) => a.to_writer(writer).map_err(|e| match e {
