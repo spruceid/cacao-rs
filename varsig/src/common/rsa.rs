@@ -37,7 +37,7 @@ impl<const HASH: u64, const ENCODING: u64> VarSigTrait for Rsa<HASH, ENCODING> {
         Some(h) == bytes.get(..2)
     }
 
-    fn from_reader<R>(reader: &mut R) -> Result<Self, DeserError<Self::DeserError>>
+    fn from_reader<R>(mut reader: R) -> Result<Self, DeserError<Self::DeserError>>
     where
         Self: Sized,
         R: Read,
@@ -63,9 +63,9 @@ impl<const HASH: u64, const ENCODING: u64> VarSigTrait for Rsa<HASH, ENCODING> {
         Ok(Self { bytes })
     }
 
-    fn to_writer<W>(&self, writer: &mut W) -> Result<(), SerError<Self::SerError>>
+    fn to_writer<W>(&self, mut writer: W) -> Result<(), SerError<Self::SerError>>
     where
-        W: ?Sized + Write,
+        W: Write,
     {
         let mut buf = u64_buffer();
         writer.write_all(write_u64(RSA as u64, &mut buf))?;

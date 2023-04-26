@@ -46,7 +46,7 @@ impl<const HEADER: u64, const HASH: u64, const LEN: usize, const ENCODING: u64> 
         Some(h) == bytes.get(..h.len())
     }
 
-    fn from_reader<R>(reader: &mut R) -> Result<Self, DeserError<Self::DeserError>>
+    fn from_reader<R>(mut reader: R) -> Result<Self, DeserError<Self::DeserError>>
     where
         Self: Sized,
         R: Read,
@@ -71,9 +71,9 @@ impl<const HEADER: u64, const HASH: u64, const LEN: usize, const ENCODING: u64> 
         Ok(Self { bytes })
     }
 
-    fn to_writer<W>(&self, writer: &mut W) -> Result<(), SerError<Self::SerError>>
+    fn to_writer<W>(&self, mut writer: W) -> Result<(), SerError<Self::SerError>>
     where
-        W: ?Sized + Write,
+        W: Write,
     {
         let mut buf = u64_buffer();
         writer.write_all(write_u64(HEADER, &mut buf))?;

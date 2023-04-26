@@ -6,14 +6,14 @@ pub trait VarSigTrait {
 
     fn valid_header(bytes: &[u8]) -> bool;
 
-    fn from_reader<R>(reader: &mut R) -> Result<Self, DeserError<Self::DeserError>>
+    fn from_reader<R>(reader: R) -> Result<Self, DeserError<Self::DeserError>>
     where
         Self: Sized,
         R: Read;
 
-    fn to_writer<W>(&self, writer: &mut W) -> Result<(), SerError<Self::SerError>>
+    fn to_writer<W>(&self, writer: W) -> Result<(), SerError<Self::SerError>>
     where
-        W: ?Sized + Write;
+        W: Write;
 
     fn to_vec(&self) -> Result<Vec<u8>, SerError<Self::SerError>> {
         let mut buf = Vec::new();
