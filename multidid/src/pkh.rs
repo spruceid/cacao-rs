@@ -35,6 +35,12 @@ impl<C, A> Caip10<C, A> {
     }
 }
 
+impl<C, A> From<(C, A)> for Caip10<C, A> {
+    fn from((chain_id, address): (C, A)) -> Self {
+        Self::new(chain_id, address)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CosmosAddress {
     Secp256k1([u8; 20]),

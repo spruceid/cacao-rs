@@ -31,6 +31,7 @@ http = "0.2.5"
 hex = { version = "0.4", optional = true }
 varsig = { version = "0.1", path = "./varsig" }
 multidid = { version = "0.1", path = "./multidid" }
+siwe-recap = { version = "0.2", path = "../capgrok" }
 
 [dev-dependencies]
 async-std = { version = "1.10", features = ["attributes"] }
