@@ -1,42 +1,71 @@
-use super::CacaoProfile;
+use super::{Cacao, CacaoProfile};
+use multidid::MultiDid;
 use serde_json::Value;
 use ssi_jwk::Algorithm;
 use ssi_ucan::Ucan;
-use varsig::common::{JoseCommon, DAG_JSON_ENCODING};
+use varsig::{
+    common::{Ed25519, Es256, Es256K, JoseCommon, Rsa256, Rsa512, DAG_JSON_ENCODING},
+    VarSig,
+};
 
 pub type UcanCacao<F = Value, NB = Value> = Cacao<JoseCommon<DAG_JSON_ENCODING>, F, NB>;
 
 #[derive(thiserror::Error, Debug)]
-pub enum Error {}
+pub enum Error {
+    #[error("Unsupported Algorithm: {0}")]
+    UnsupportedAlgorithm(Algorithm),
+    #[error("Incorrect Signature Length: recieved {0}, expected {1}")]
+    IncorrectSignatureLength(usize, usize),
+    #[error("Missing Version Header")]
+    MissingVersionHeader,
+}
 
 impl<F, NB> TryFrom<Ucan<F, NB>> for UcanCacao<F, NB> {
     type Error = Error;
     fn try_from(ucan: Ucan<F, NB>) -> Result<Self, Self::Error> {
+        let (header, payload, signature) = ucan.into_inner();
         Ok(Self {
-            issuer: MultiDid::from_str(ucan.payload.issuer)?,
-            audience: MultiDid::from_str(ucan.payload.audience)?,
-            signature: match ucan.header.algorithm {
-                Algorithm::Es256 =>
-            },
-            version: ucan
-                .header
+            issuer: MultiDid::from_str(payload.issuer)?,
+            audience: MultiDid::from_str(payload.audience)?,
+            signature: VarSig::new(match_alg(header.alg, ucan.signature)?),
+            version: header
                 .additional_parameters
                 .get("ucv")
-                .ok_or_else(|| todo!()),
-            attenuations: ucan.payload.capabilities,
-            nonce: ucan.payload.nonce,
-            proof: ucan.payload.proof,
-            issued_at: ucan.payload.issued_at,
-            not_before: ucan.payload.not_before,
-            expiration: ucan.payload.expiration,
-            facts: ucan.payload.facts,
+                .ok_or_else(|| Error::MissingVersionHeader)?,
+            attenuations: payload.capabilities,
+            nonce: payload.nonce,
+            proof: payload.proof,
+            issued_at: payload.issued_at,
+            not_before: payload.not_before,
+            expiration: payload.expiration,
+            facts: payload.facts,
         })
     }
+}
+
+fn match_alg<const E: u64>(a: Algorithm, s: Vec<u8>) -> Result<JoseCommon<E>, Error> {
+    Ok(match a {
+        Algorithm::ES256 => JoseCommon::Es256(Es256::new(
+            s.try_into()
+                .map_err(|v| Error::IncorrectSignatureLength(v.len(), 64))?,
+        )),
+        Algorithm::EdDSA => JoseCommon::Ed25519(Ed25519::new(
+            s.try_into()
+                .map_err(|v| Error::IncorrectSignatureLength(v.len(), 64))?,
+        )),
+        Algorithm::RS256 => JoseCommon::Rsa256(Rsa256::new(s)),
+        Algorithm::RS512 => JoseCommon::Rsa512(Rsa512::new(s)),
+        Algorithm::ES256K => JoseCommon::Es256K(Es256K::new(
+            s.try_into()
+                .map_err(|v| Error::IncorrectSignatureLength(v.len(), 64))?,
+        )),
+        a => return Err(Error::UnsupportedAlgorithm(a)),
+    })
 }
 
 pub struct UcanCacaoProfile;
 
 impl CacaoProfile for UcanCacaoProfile {
-    type Signature = JoseCommon<RAW_ENCODING>;
+    type Signature = JoseCommon<DAG_JSON_ENCODING>;
     type Facts = Value;
 }

@@ -1,4 +1,4 @@
-use libipld::{cid::Cid, ipld::Ipld};
+use libipld::cid::Cid;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::fmt::Debug;
