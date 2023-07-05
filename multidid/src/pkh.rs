@@ -1,5 +1,5 @@
-use crate::Error;
 use std::io::{Error as IoError, Read, Write};
+use std::{fmt::Display, str::FromStr};
 use unsigned_varint::{
     encode::{u64 as write_u64, u64_buffer},
     io::read_u64,
@@ -73,6 +73,22 @@ impl HederaAddress {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error(transparent)]
+    Io(#[from] IoError),
+    #[error("Invalid PKH discriminant: {0}")]
+    InvalidPkh(u64),
+    #[error(transparent)]
+    Utf8(#[from] std::string::FromUtf8Error),
+    #[error(transparent)]
+    Varint(#[from] unsigned_varint::io::ReadError),
+    #[error("Invalid Hedera length: {0}")]
+    InvalidHederaLength(u64),
+    #[error("Invalid Cosmos length: {0}")]
+    InvalidCosmosLength(u64),
+}
+
 impl DidPkhTypes {
     pub fn caip_2_code(&self) -> &'static str {
         use DidPkhTypes::*;
@@ -90,7 +106,7 @@ impl DidPkhTypes {
         PKH_CODEC
     }
 
-    pub fn to_vec(&self) -> Vec<u8> {
+    pub(crate) fn to_vec(&self) -> Vec<u8> {
         let mut vec = Vec::new();
         vec.push(PKH_CODEC as u8);
         let mut buf = u64_buffer();
@@ -155,16 +171,10 @@ impl DidPkhTypes {
         vec
     }
 
-    pub fn from_reader<R>(reader: &mut R) -> Result<Self, Error>
+    pub(crate) fn from_reader<R>(reader: &mut R) -> Result<Self, Error>
     where
         R: Read,
     {
-        let mut buf = [0u8; 1];
-        reader.read_exact(&mut buf)?;
-        let codec = buf[0];
-        if codec as u64 != PKH_CODEC {
-            return Err(Error::InvalidCodec(codec as u64));
-        }
         let pkh_type = read_u64(reader.by_ref())?;
         match pkh_type {
             // bitcoin-like
@@ -206,7 +216,7 @@ impl DidPkhTypes {
                             reader.read_exact(&mut address)?;
                             CosmosAddress::Secp256r1(address)
                         }
-                        _ => return Err(Error::Format("Invalid cosmos address length")),
+                        l => return Err(Error::InvalidCosmosLength(l)),
                     },
                 )))
             }
@@ -246,7 +256,7 @@ impl DidPkhTypes {
                             reader.read_exact(&mut address)?;
                             HederaAddress::Secp256k1(address)
                         }
-                        _ => return Err(Error::Format("Invalid hedera address length")),
+                        l => return Err(Error::InvalidHederaLength(l)),
                     },
                 )))
             }
@@ -258,11 +268,11 @@ impl DidPkhTypes {
                 reader.read_exact(&mut address)?;
                 Ok(DidPkhTypes::Lip9(Caip10::new(chain_id, address)))
             }
-            _ => Err(Error::Format("Unsupported did-pkh discriminant")),
+            t => Err(Error::InvalidPkh(t)),
         }
     }
 
-    pub fn to_writer<W>(&self, writer: &mut W) -> Result<(), IoError>
+    pub(crate) fn to_writer<W>(&self, writer: &mut W) -> Result<(), IoError>
     where
         W: ?Sized + Write,
     {
