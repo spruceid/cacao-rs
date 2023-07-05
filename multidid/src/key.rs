@@ -1,5 +1,7 @@
-use crate::Error;
 use std::io::{Error as IoError, Read, Write};
+use std::{fmt::Display, str::FromStr};
+use unsigned_varint::encode::{u64 as write_u64, u64_buffer};
+use unsigned_varint::io::read_u64;
 
 const SECP256K1_CODEC: u64 = 0xe7;
 const BLS12_381_G1_CODEC: u64 = 0xea;
@@ -22,6 +24,14 @@ pub enum DidKeyTypes {
     P384([u8; 49]),
     P521([u8; 67]),
     // RSA([u8; ??]),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error(transparent)]
+    Io(#[from] IoError),
+    #[error("Invalid key type: {0:x}")]
+    InvalidCodec(u64),
 }
 
 impl DidKeyTypes {
@@ -84,7 +94,7 @@ impl DidKeyTypes {
                 reader.read_exact(&mut buf)?;
                 Ok(Self::P521(buf))
             }
-            _ => Err(Error::InvalidPrefix(codec)),
+            _ => Err(Error::InvalidCodec(codec)),
         }
     }
 
@@ -92,10 +102,12 @@ impl DidKeyTypes {
     where
         W: ?Sized + Write,
     {
+        let mut buf = u64_buffer();
+        writer.write_all(write_u64(self.codec(), &mut buf))?;
         writer.write_all(&self.bytes())
     }
 
-    pub fn bytes(&self) -> &[u8] {
+    fn bytes(&self) -> &[u8] {
         match self {
             Self::Secp256k1(key) => key,
             Self::Bls12_381G1(key) => key,
@@ -105,6 +117,51 @@ impl DidKeyTypes {
             Self::P256(key) => key,
             Self::P384(key) => key,
             Self::P521(key) => key,
+        }
+    }
+
+    pub(crate) fn to_vec(&self) -> Vec<u8> {
+        let mut vec = Vec::new();
+        let mut buf = u64_buffer();
+        vec.extend(write_u64(self.codec(), &mut buf));
+        vec.extend(self.bytes());
+        vec
+    }
+}
+
+impl Display for DidKeyTypes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "z{}", bs58::encode(self.to_vec()).into_string())
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ParseErr {
+    #[error("Invalid Base")]
+    InvalidBase,
+    #[error("Insufficient Length")]
+    InsuficientBytes,
+    #[error(transparent)]
+    Varint(#[from] unsigned_varint::io::ReadError),
+    #[error(transparent)]
+    Base58(#[from] bs58::decode::Error),
+    #[error(transparent)]
+    Decoding(#[from] Error),
+}
+
+impl FromStr for DidKeyTypes {
+    type Err = ParseErr;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match (s.get(..1), s.get(1..)) {
+            (None, _) | (_, None) => Err(ParseErr::InsuficientBytes),
+            (Some("z"), Some(rest)) => {
+                let bytes = bs58::decode(rest).into_vec()?;
+                let mut br = bytes.as_slice();
+                let codec = read_u64(&mut br)?;
+                Ok(Self::from_reader(&mut br, codec)?)
+            }
+            _ => Err(ParseErr::InvalidBase),
         }
     }
 }
