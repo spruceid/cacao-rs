@@ -80,3 +80,34 @@ impl<D> From<DeserError<D>> for Error<D> {
         }
     }
 }
+
+#[cfg(feature = "serde")]
+mod serde_util {
+    use super::*;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    impl<V: VarSigTrait> Serialize for VarSig<V> {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            self.to_vec()
+                .map_err(|e| {
+                    serde::ser::Error::custom(format!("VarSig serialization error: {}", e))
+                })
+                .and_then(|v| serializer.serialize_bytes(&v))
+        }
+    }
+
+    impl<'de, V: VarSigTrait> Deserialize<'de> for VarSig<V> {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let bytes = <&[u8]>::deserialize(deserializer)?;
+            VarSig::from_bytes(bytes).map_err(|e| {
+                serde::de::Error::custom(format!("VarSig deserialization error: {}", e))
+            })
+        }
+    }
+}

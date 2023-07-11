@@ -167,6 +167,33 @@ impl MultiDid {
     }
 }
 
+#[cfg(feature = "serde")]
+mod serde_util {
+    use super::*;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    impl Serialize for MultiDid {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            serializer.serialize_bytes(&self.to_vec())
+        }
+    }
+
+    impl<'de> Deserialize<'de> for MultiDid {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let bytes = <&[u8]>::deserialize(deserializer)?;
+            MultiDid::from_bytes(bytes).map_err(|e| {
+                serde::de::Error::custom(format!("MultiDid deserialization error: {}", e))
+            })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
