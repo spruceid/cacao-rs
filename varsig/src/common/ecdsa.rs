@@ -24,6 +24,9 @@ impl<const HEADER: u64, const HASH: u64, const LEN: usize, const ENCODING: u64>
     pub fn bytes(&self) -> &[u8; LEN] {
         &self.bytes
     }
+    pub fn into_inner(self) -> [u8; LEN] {
+        self.bytes
+    }
 }
 
 pub type Es256<const ENCODING: u64> = Ecdsa<{ P256 as u64 }, { SHA256 as u64 }, 64, ENCODING>;

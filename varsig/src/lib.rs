@@ -20,6 +20,10 @@ impl<S> VarSig<S> {
     pub fn sig(&self) -> &S {
         &self.0
     }
+
+    pub fn into_inner(self) -> S {
+        self.0
+    }
 }
 
 impl<S: VarSigTrait> VarSig<S> {
