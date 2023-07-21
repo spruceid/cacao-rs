@@ -339,3 +339,20 @@ impl DidPkhTypes {
         Ok(())
     }
 }
+
+impl Display for DidPkhTypes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ParseErr {}
+
+impl FromStr for DidPkhTypes {
+    type Err = ParseErr;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        todo!()
+    }
+}

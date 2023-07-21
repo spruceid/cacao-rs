@@ -1,8 +1,9 @@
-use crate::{pkh::PKH_CODEC, DidKeyTypes, DidPkhTypes, Error};
+use crate::{key, pkh, pkh::PKH_CODEC, DidKeyTypes, DidPkhTypes, Error};
 use std::io::{Error as IoError, Read, Write};
+use std::{fmt::Display, str::FromStr};
 use unsigned_varint::io::read_u64;
 
-const RAW_CODEC: u64 = 0x55;
+pub const RAW_CODEC: u64 = 0x55;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Method {
@@ -59,5 +60,38 @@ impl Method {
             }
         }
         Ok(())
+    }
+}
+
+impl Display for Method {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Method::Raw(raw) => write!(f, "{}", raw),
+            Method::Pkh(pkh) => write!(f, "pkh:{}", pkh),
+            Method::Key(key) => write!(f, "key:{}", key),
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ParseErr {
+    #[error(transparent)]
+    Pkh(#[from] pkh::ParseErr),
+    #[error(transparent)]
+    Key(#[from] key::ParseErr),
+    #[error("Invalid DID")]
+    Invalid,
+}
+
+impl FromStr for Method {
+    type Err = ParseErr;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match (s.get(..4), s.get(4..)) {
+            (Some("pkh:"), Some(rest)) => Ok(Self::Pkh(rest.parse()?)),
+            (Some("key:"), Some(rest)) => Ok(Self::Key(rest.parse()?)),
+            // TODO enforce did encoding
+            _ => Ok(Self::Raw(s.to_string())),
+        }
     }
 }
