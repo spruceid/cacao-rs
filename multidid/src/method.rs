@@ -26,7 +26,7 @@ impl Method {
         match self {
             Self::Raw(raw) => raw.as_bytes().to_vec(),
             Self::Pkh(h) => h.to_vec(),
-            Self::Key(k) => k.bytes().to_vec(),
+            Self::Key(k) => k.to_vec(),
         }
     }
 

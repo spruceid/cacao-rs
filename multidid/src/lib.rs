@@ -50,6 +50,10 @@ impl MultiDid {
         self.query.as_ref()
     }
 
+    pub fn into_inner(self) -> (Method, Option<UriFragmentString>, Option<UriQueryString>) {
+        (self.method, self.fragment, self.query)
+    }
+
     pub fn to_vec(&self) -> Vec<u8> {
         match (&self.query, &self.fragment) {
             (Some(q), Some(f)) => [
@@ -143,6 +147,7 @@ impl MultiDid {
                         .map(|q| q.as_str().len() + 1)
                         .unwrap_or(0)
                     + raw.len()) as u64;
+                writer.write_all(&[method::RAW_CODEC as u8])?;
                 writer.write_all(write_u64(len, &mut buf))?;
                 writer.write_all(raw.as_bytes())?;
             }
