@@ -4,7 +4,7 @@ use serde_json::Value;
 use ssi_jwk::Algorithm;
 use ssi_ucan::Ucan;
 use varsig::{
-    common::{Ed25519, Es256, Es256K, JoseCommon, Rsa256, Rsa512, DAG_JSON_ENCODING},
+    common::{Ed25519, Es256, Es256K, JoseSig, Rsa256, Rsa512, DAG_JSON_ENCODING},
     VarSig,
 };
 
@@ -43,21 +43,21 @@ impl<F, NB> TryFrom<Ucan<F, NB>> for UcanCacao<F, NB> {
     }
 }
 
-fn match_alg<const E: u64>(a: Algorithm, s: Vec<u8>) -> Result<JoseCommon<E>, Error> {
+fn match_alg<const E: u64>(a: Algorithm, s: Vec<u8>) -> Result<JoseSig<E>, Error> {
     Ok(match a {
-        Algorithm::ES256 => JoseCommon::Es256(Es256::new(
+        Algorithm::ES256 => JoseSig::Es256(Es256::new(
             s.try_into()
-                .map_err(|v| Error::IncorrectSignatureLength(v.len(), 64))?,
+                .map_err(|v: Vec<u8>| Error::IncorrectSignatureLength(v.len(), 64))?,
         )),
-        Algorithm::EdDSA => JoseCommon::Ed25519(Ed25519::new(
+        Algorithm::EdDSA => JoseSig::Ed25519(Ed25519::new(
             s.try_into()
-                .map_err(|v| Error::IncorrectSignatureLength(v.len(), 64))?,
+                .map_err(|v: Vec<u8>| Error::IncorrectSignatureLength(v.len(), 64))?,
         )),
-        Algorithm::RS256 => JoseCommon::Rsa256(Rsa256::new(s)),
-        Algorithm::RS512 => JoseCommon::Rsa512(Rsa512::new(s)),
-        Algorithm::ES256K => JoseCommon::Es256K(Es256K::new(
+        Algorithm::RS256 => JoseSig::Rsa256(Rsa256::new(s)),
+        Algorithm::RS512 => JoseSig::Rsa512(Rsa512::new(s)),
+        Algorithm::ES256K => JoseSig::Es256K(Es256K::new(
             s.try_into()
-                .map_err(|v| Error::IncorrectSignatureLength(v.len(), 64))?,
+                .map_err(|v: Vec<u8>| Error::IncorrectSignatureLength(v.len(), 64))?,
         )),
         a => return Err(Error::UnsupportedAlgorithm(a)),
     })
