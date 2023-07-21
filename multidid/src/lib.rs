@@ -1,5 +1,6 @@
 use iri_string::types::{UriFragmentString, UriQueryString, UriReferenceString, UriRelativeString};
 use std::io::{Error as IoError, Read, Write};
+use std::{fmt::Display, str::FromStr};
 use unsigned_varint::{
     encode::{u64 as write_u64, u64_buffer},
     io::read_u64,
@@ -164,6 +165,37 @@ impl MultiDid {
             (None, None) => {}
         };
         Ok(())
+    }
+}
+
+impl Display for MultiDid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.method)?;
+        if let Some(fragment) = &self.fragment {
+            write!(f, "#{}", fragment)?;
+        }
+        if let Some(query) = &self.query {
+            write!(f, "?{}", query)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ParseErr {
+    #[error(transparent)]
+    Pkh(#[from] pkh::ParseErr),
+    #[error(transparent)]
+    Key(#[from] key::ParseErr),
+    #[error("Invalid DID")]
+    Invalid,
+}
+
+impl FromStr for MultiDid {
+    type Err = ParseErr;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        todo!()
     }
 }
 
