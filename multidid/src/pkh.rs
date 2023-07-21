@@ -33,6 +33,9 @@ impl<C, A> Caip10<C, A> {
     pub fn address(&self) -> &A {
         &self.address
     }
+    pub fn into_inner(self) -> (C, A) {
+        (self.chain_id, self.address)
+    }
 }
 
 impl<C, A> From<(C, A)> for Caip10<C, A> {
