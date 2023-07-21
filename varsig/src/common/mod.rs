@@ -58,7 +58,7 @@ impl<const E: u64> From<Ed25519Error<E>> for JoseError<E> {
     }
 }
 
-pub enum JoseCommon<const E: u64> {
+pub enum JoseSig<const E: u64> {
     Es256(Es256<E>),
     Es512(Es512<E>),
     Rsa256(Rsa256<E>),
@@ -67,7 +67,7 @@ pub enum JoseCommon<const E: u64> {
     Es256K(Es256K<E>),
 }
 
-impl<const E: u64> VarSigTrait for JoseCommon<E> {
+impl<const E: u64> VarSigTrait for JoseSig<E> {
     type SerError = std::convert::Infallible;
     type DeserError = JoseError<E>;
 
