@@ -175,7 +175,7 @@ impl MultiDid {
 
 impl Display for MultiDid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.method)?;
+        write!(f, "did:{}", self.method)?;
         if let Some(fragment) = &self.fragment {
             write!(f, "#{}", fragment)?;
         }
@@ -189,18 +189,31 @@ impl Display for MultiDid {
 #[derive(Debug, thiserror::Error)]
 pub enum ParseErr {
     #[error(transparent)]
-    Pkh(#[from] pkh::ParseErr),
+    Did(#[from] method::ParseErr),
     #[error(transparent)]
-    Key(#[from] key::ParseErr),
-    #[error("Invalid DID")]
-    Invalid,
+    QueryOrFragment(#[from] iri_string::validate::Error),
 }
 
 impl FromStr for MultiDid {
     type Err = ParseErr;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        todo!()
+        let (did, query, fragment) = if let Some((did, rest)) = s.split_once('?') {
+            if let Some((query, fragment)) = rest.split_once('#') {
+                (did, Some(query), Some(fragment))
+            } else {
+                (did, Some(rest), None)
+            }
+        } else if let Some((did, rest)) = s.split_once('#') {
+            (did, None, Some(rest))
+        } else {
+            (s, None, None)
+        };
+        Ok(Self {
+            method: Method::from_str(did)?,
+            query: query.map(|q| q.parse()).transpose()?,
+            fragment: fragment.map(|f| f.parse()).transpose()?,
+        })
     }
 }
 
