@@ -14,6 +14,7 @@ unsigned-varint = { version = "0.7", features = ["std"] }
 thiserror = "1"
 bs58 = "0.5"
 serde = { version = "1", optional = true }
+hex = "0.4"
 
 [dev-dependencies]
 serde_json = "1"

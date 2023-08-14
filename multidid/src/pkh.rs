@@ -1,5 +1,9 @@
+use sha3::{Digest, Keccak256};
 use std::io::{Error as IoError, Read, Write};
-use std::{fmt::Display, str::FromStr};
+use std::{
+    fmt::{Display, Formatter, Result as FmtResult},
+    str::FromStr,
+};
 use unsigned_varint::{
     encode::{u64 as write_u64, u64_buffer},
     io::read_u64,
@@ -10,7 +14,7 @@ pub(crate) const PKH_CODEC: u64 = 0xca;
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DidPkhTypes {
     Bip122(Caip10<[u8; 32], [u8; 25]>),
-    Eip155(Caip10<String, [u8; 20]>),
+    Eip155(Caip10<u64, [u8; 20]>),
     Cosmos(Caip10<String, CosmosAddress>),
     Starknet(Caip10<String, [u8; 20]>),
     Hedera(Caip10<String, HederaAddress>),
@@ -121,8 +125,7 @@ impl DidPkhTypes {
             }
             DidPkhTypes::Eip155(caip10) => {
                 vec.extend(write_u64(2, &mut buf));
-                vec.extend(write_u64(caip10.chain_id().len() as u64, &mut buf));
-                vec.extend(caip10.chain_id().as_bytes());
+                vec.extend(write_u64(*caip10.chain_id(), &mut buf));
                 vec.extend(caip10.address());
             }
             DidPkhTypes::Cosmos(caip10) => {
@@ -190,15 +193,10 @@ impl DidPkhTypes {
             }
             // ethereum-like
             2 => {
-                let ref_len = read_u64(reader.by_ref())?;
-                let mut chain_id = vec![0u8; ref_len as usize];
-                reader.read_exact(&mut chain_id)?;
+                let chain_id = read_u64(reader.by_ref())?;
                 let mut address = [0u8; 20];
                 reader.read_exact(&mut address)?;
-                Ok(DidPkhTypes::Eip155(Caip10::new(
-                    String::from_utf8(chain_id)?,
-                    address,
-                )))
+                Ok(DidPkhTypes::Eip155(Caip10::new(chain_id, address)))
             }
             // cosmos
             3 => {
@@ -289,8 +287,7 @@ impl DidPkhTypes {
             }
             DidPkhTypes::Eip155(caip10) => {
                 writer.write_all(write_u64(2, &mut buf))?;
-                writer.write_all(write_u64(caip10.chain_id().len() as u64, &mut buf))?;
-                writer.write_all(caip10.chain_id().as_bytes())?;
+                writer.write_all(write_u64(*caip10.chain_id() as u64, &mut buf))?;
                 writer.write_all(caip10.address())?;
             }
             DidPkhTypes::Cosmos(caip10) => {
@@ -344,18 +341,137 @@ impl DidPkhTypes {
 }
 
 impl Display for DidPkhTypes {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            // Self::Bip122(c) => write!(f, "bip122:{}:{}", c.chain_id(), c.address()),
+            Self::Eip155(c) => write!(f, "eip155:{}:{}", c.chain_id(), eip55(c.address())),
+            // Self::Cosmos(c) => write!(f, "cosmos:{}:{}", c.chain_id(), c.address()),
+            // Self::Starknet(c) => write!(f, "starknet:{}:{}", c.chain_id(), c.address()),
+            // Self::Hedera(c) => write!(f, "hedera:{}:{}", c.chain_id(), c.address()),
+            // Self::Lip9(c) => write!(f, "lip9:{}:{}", c.chain_id(), c.address()),
+            _ => todo!(),
+        }
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum ParseErr {}
+pub enum ParseErr {
+    #[error("Invalid DID")]
+    InvalidDid,
+    #[error("Invalid Integer")]
+    InvalidInteger(#[from] std::num::ParseIntError),
+    #[error("Invalid EIP55: {0}")]
+    Eip55(#[from] Eip55Err),
+}
 
 impl FromStr for DidPkhTypes {
     type Err = ParseErr;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        todo!()
+        Ok(
+            match s
+                .split_once(":")
+                .and_then(|(method, r)| Some((method, r.split_once(":")?)))
+            {
+                Some(("bip122", (chain_id, address))) => {
+                    Self::Bip122(Caip10::new(todo!(), todo!()))
+                }
+                Some(("eip155", (chain_id, address))) => {
+                    Self::Eip155(Caip10::new(chain_id.parse()?, parse_eip55(address)?))
+                }
+                Some(("cosmos", (chain_id, address))) => {
+                    Self::Cosmos(Caip10::new(chain_id.to_string(), todo!()))
+                }
+                Some(("starknet", (chain_id, address))) => {
+                    Self::Starknet(Caip10::new(chain_id.to_string(), todo!()))
+                }
+                Some(("hedera", (chain_id, address))) => {
+                    Self::Hedera(Caip10::new(chain_id.to_string(), todo!()))
+                }
+                Some(("lip9", (chain_id, address))) => Self::Lip9(Caip10::new(todo!(), todo!())),
+                _ => return Err(ParseErr::InvalidDid),
+            },
+        )
+    }
+}
+
+impl Display for CosmosAddress {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            CosmosAddress::Secp256k1(address) => {
+                for byte in address {
+                    write!(f, "{:02x}", byte)?;
+                }
+            }
+            CosmosAddress::Secp256r1(address) => {
+                for byte in address {
+                    write!(f, "{:02x}", byte)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Display for HederaAddress {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            HederaAddress::EVM(address) => {
+                for byte in address {
+                    write!(f, "{:02x}", byte)?;
+                }
+            }
+            HederaAddress::Ed25519(address) => {
+                for byte in address {
+                    write!(f, "{:02x}", byte)?;
+                }
+            }
+            HederaAddress::Secp256k1(address) => {
+                for byte in address {
+                    write!(f, "{:02x}", byte)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Takes an eth address and returns it as a checksum formatted string.
+pub fn eip55(addr: &[u8; 20]) -> String {
+    let addr_str = hex::encode(addr);
+    let hash = Keccak256::digest(addr_str.as_bytes());
+    "0x".chars()
+        .chain(addr_str.chars().enumerate().map(|(i, c)| {
+            match (c, hash[i >> 1] & if i % 2 == 0 { 128 } else { 8 } != 0) {
+                ('a'..='f' | 'A'..='F', true) => c.to_ascii_uppercase(),
+                _ => c.to_ascii_lowercase(),
+            }
+        }))
+        .collect()
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum Eip55Err {
+    #[error("Missing Prefix 0x")]
+    MissingPrefix,
+    #[error("Invalid Checksum")]
+    InvalidChecksum,
+    #[error("Invalid hex: {0}")]
+    InvalidHex(#[from] hex::FromHexError),
+}
+
+fn parse_eip55(address: &str) -> Result<[u8; 20], Eip55Err> {
+    use hex::FromHex;
+    if !address.starts_with("0x") {
+        Err(Eip55Err::MissingPrefix)
+    } else {
+        let s = <[u8; 20]>::from_hex(address)?;
+        let sum = eip55(&s);
+        let sum = sum.trim_start_matches("0x");
+        if sum != address {
+            Err(Eip55Err::InvalidChecksum)
+        } else {
+            Ok(s)
+        }
     }
 }
