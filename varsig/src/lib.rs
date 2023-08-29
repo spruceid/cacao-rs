@@ -9,7 +9,7 @@ pub use traits::{DeserError, SerError, VarSigTrait};
 
 const VARSIG_VARINT_PREFIX: u8 = 0x34;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VarSig<S>(S);
 
 impl<S> VarSig<S> {

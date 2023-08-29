@@ -8,7 +8,7 @@ use unsigned_varint::{
 
 pub const ED25519: u16 = 0xed;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Ed25519<const ENCODING: u64> {
     bytes: [u8; 64],
 }

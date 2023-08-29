@@ -58,6 +58,7 @@ impl<const E: u64> From<Ed25519Error<E>> for JoseError<E> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum JoseSig<const E: u64> {
     Es256(Es256<E>),
     Es512(Es512<E>),
