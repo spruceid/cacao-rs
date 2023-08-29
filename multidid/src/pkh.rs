@@ -18,8 +18,6 @@ pub enum DidPkhTypes {
     Eip155(Caip10<u64, [u8; 20]>),
     Cosmos(Caip10<String, CosmosAddress>),
     Starknet(Caip10<String, [u8; 32]>),
-    Hedera(Caip10<String, HederaAddress>),
-    Lip9(Caip10<[u8; 32], [u8; 20]>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -55,28 +53,11 @@ pub enum CosmosAddress {
     Secp256r1([u8; 32]),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum HederaAddress {
-    EVM([u8; 20]),
-    Ed25519([u8; 32]),
-    Secp256k1([u8; 33]),
-}
-
 impl CosmosAddress {
     pub fn bytes(&self) -> &[u8] {
         match self {
             CosmosAddress::Secp256k1(address) => address,
             CosmosAddress::Secp256r1(address) => address,
-        }
-    }
-}
-
-impl HederaAddress {
-    pub fn bytes(&self) -> &[u8] {
-        match self {
-            HederaAddress::EVM(address) => address,
-            HederaAddress::Ed25519(address) => address,
-            HederaAddress::Secp256k1(address) => address,
         }
     }
 }
@@ -91,8 +72,6 @@ pub enum Error {
     Utf8(#[from] std::string::FromUtf8Error),
     #[error(transparent)]
     Varint(#[from] unsigned_varint::io::ReadError),
-    #[error("Invalid Hedera length: {0}")]
-    InvalidHederaLength(u64),
     #[error("Invalid Cosmos length: {0}")]
     InvalidCosmosLength(u64),
 }
@@ -105,8 +84,6 @@ impl DidPkhTypes {
             Eip155(_) => "eip155",
             Cosmos(_) => "cosmos",
             Starknet(_) => "starknet",
-            Hedera(_) => "hedera",
-            Lip9(_) => "lip9",
         }
     }
 
@@ -148,30 +125,6 @@ impl DidPkhTypes {
                 vec.extend(write_u64(3, &mut buf));
                 vec.extend(write_u64(caip10.chain_id().len() as u64, &mut buf));
                 vec.extend(caip10.chain_id().as_bytes());
-                vec.extend(caip10.address());
-            }
-            DidPkhTypes::Hedera(caip10) => {
-                vec.extend(write_u64(3, &mut buf));
-                vec.extend(write_u64(caip10.chain_id().len() as u64, &mut buf));
-                vec.extend(caip10.chain_id().as_bytes());
-                match caip10.address() {
-                    HederaAddress::EVM(address) => {
-                        vec.extend(write_u64(20, &mut buf));
-                        vec.extend(address);
-                    }
-                    HederaAddress::Ed25519(address) => {
-                        vec.extend(write_u64(32, &mut buf));
-                        vec.extend(address);
-                    }
-                    HederaAddress::Secp256k1(address) => {
-                        vec.extend(write_u64(33, &mut buf));
-                        vec.extend(address);
-                    }
-                }
-            }
-            DidPkhTypes::Lip9(caip10) => {
-                vec.extend(write_u64(3, &mut buf));
-                vec.extend(caip10.chain_id());
                 vec.extend(caip10.address());
             }
         };
@@ -234,42 +187,6 @@ impl DidPkhTypes {
                     address,
                 )))
             }
-            // hedera
-            5 => {
-                let ref_len = read_u64(reader.by_ref())?;
-                let mut chain_id = vec![0u8; ref_len as usize];
-                reader.read_exact(&mut chain_id)?;
-                let address_len = read_u64(reader.by_ref())?;
-                Ok(DidPkhTypes::Hedera(Caip10::new(
-                    String::from_utf8(chain_id)?,
-                    match address_len {
-                        20 => {
-                            let mut address = [0u8; 20];
-                            reader.read_exact(&mut address)?;
-                            HederaAddress::EVM(address)
-                        }
-                        32 => {
-                            let mut address = [0u8; 32];
-                            reader.read_exact(&mut address)?;
-                            HederaAddress::Ed25519(address)
-                        }
-                        33 => {
-                            let mut address = [0u8; 33];
-                            reader.read_exact(&mut address)?;
-                            HederaAddress::Secp256k1(address)
-                        }
-                        l => return Err(Error::InvalidHederaLength(l)),
-                    },
-                )))
-            }
-            // lip9
-            6 => {
-                let mut chain_id = [0u8; 32];
-                reader.read_exact(&mut chain_id)?;
-                let mut address = [0u8; 20];
-                reader.read_exact(&mut address)?;
-                Ok(DidPkhTypes::Lip9(Caip10::new(chain_id, address)))
-            }
             t => Err(Error::InvalidPkh(t)),
         }
     }
@@ -312,30 +229,6 @@ impl DidPkhTypes {
                 writer.write_all(caip10.chain_id().as_bytes())?;
                 writer.write_all(caip10.address())?;
             }
-            DidPkhTypes::Hedera(caip10) => {
-                writer.write_all(write_u64(3, &mut buf))?;
-                writer.write_all(write_u64(caip10.chain_id().len() as u64, &mut buf))?;
-                writer.write_all(caip10.chain_id().as_bytes())?;
-                match caip10.address() {
-                    HederaAddress::EVM(address) => {
-                        writer.write_all(write_u64(20, &mut buf))?;
-                        writer.write_all(address)?;
-                    }
-                    HederaAddress::Ed25519(address) => {
-                        writer.write_all(write_u64(32, &mut buf))?;
-                        writer.write_all(address)?;
-                    }
-                    HederaAddress::Secp256k1(address) => {
-                        writer.write_all(write_u64(20, &mut buf))?;
-                        writer.write_all(address)?;
-                    }
-                }
-            }
-            DidPkhTypes::Lip9(caip10) => {
-                writer.write_all(write_u64(3, &mut buf))?;
-                writer.write_all(caip10.chain_id())?;
-                writer.write_all(caip10.address())?;
-            }
         };
         Ok(())
     }
@@ -353,9 +246,6 @@ impl Display for DidPkhTypes {
             Self::Eip155(c) => write!(f, "eip155:{}:{}", c.chain_id(), eip55(c.address())),
             Self::Cosmos(c) => write!(f, "cosmos:{}:{}", c.chain_id(), c.address()),
             Self::Starknet(c) => write!(f, "starknet:{}:{}", c.chain_id(), eip55(c.address())),
-            // Self::Hedera(c) => write!(f, "hedera:{}:{}", c.chain_id(), c.address()),
-            // Self::Lip9(c) => write!(f, "lip9:{}:{}", c.chain_id(), c.address()),
-            _ => todo!(),
         }
     }
 }
@@ -401,10 +291,6 @@ impl FromStr for DidPkhTypes {
                 Some(("starknet", (chain_id, address))) => {
                     Self::Starknet(Caip10::new(chain_id.to_string(), parse_starknet(address)?))
                 }
-                Some(("hedera", (chain_id, address))) => {
-                    Self::Hedera(Caip10::new(chain_id.to_string(), todo!()))
-                }
-                Some(("lip9", (chain_id, address))) => Self::Lip9(Caip10::new(todo!(), todo!())),
                 _ => return Err(ParseErr::InvalidDid),
             },
         )
@@ -441,29 +327,6 @@ impl FromStr for CosmosAddress {
                     }
                 }
             })
-    }
-}
-
-impl Display for HederaAddress {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        match self {
-            HederaAddress::EVM(address) => {
-                for byte in address {
-                    write!(f, "{:02x}", byte)?;
-                }
-            }
-            HederaAddress::Ed25519(address) => {
-                for byte in address {
-                    write!(f, "{:02x}", byte)?;
-                }
-            }
-            HederaAddress::Secp256k1(address) => {
-                for byte in address {
-                    write!(f, "{:02x}", byte)?;
-                }
-            }
-        }
-        Ok(())
     }
 }
 
