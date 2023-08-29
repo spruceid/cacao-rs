@@ -71,11 +71,11 @@ impl<S, F, NB> Cacao<S, F, NB> {
         self.expiration
     }
 
-    fn facts(&self) -> Option<&F> {
+    pub fn facts(&self) -> Option<&F> {
         self.facts.as_ref()
     }
 
-    fn signature(&self) -> &VarSig<S> {
+    pub fn signature(&self) -> &VarSig<S> {
         &self.signature
     }
 

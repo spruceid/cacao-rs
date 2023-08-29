@@ -49,14 +49,41 @@ where
 
     async fn verify(&self, cacao: &CommonCacao<F, NB>) -> Result<(), Self::Error> {
         Ok(match RecapCacao::try_from(cacao.clone()) {
-            Ok(recap) => RecapVerify::default().verify(&recap).await?,
+            Ok(recap) => self.verify(&recap).await?,
             Err(c) => match UcanCacao::try_from(c) {
-                Ok(ucan) => self.0.verify(&ucan).await?,
+                Ok(ucan) => self.verify(&ucan).await?,
                 Err(_) => {
                     return Err(Error::Mismatch);
                 }
             },
         })
+    }
+}
+
+#[async_trait]
+impl<NB, R> CacaoVerifier<RecapSignature, RecapFacts, NB> for CommonVerifier<R>
+where
+    R: Send + Sync + DIDResolver,
+    NB: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
+{
+    type Error = RecapError;
+
+    async fn verify(&self, cacao: &RecapCacao<NB>) -> Result<(), Self::Error> {
+        RecapVerify::default().verify(cacao).await
+    }
+}
+
+#[async_trait]
+impl<NB, R, F> CacaoVerifier<UcanSignature, UcanFacts<F>, NB> for CommonVerifier<R>
+where
+    R: Send + Sync + DIDResolver,
+    F: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
+    NB: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
+{
+    type Error = UcanError;
+
+    async fn verify(&self, cacao: &UcanCacao<F, NB>) -> Result<(), Self::Error> {
+        self.0.verify(cacao).await
     }
 }
 
