@@ -1,4 +1,4 @@
-use super::{Cacao, Verifier};
+use super::{Cacao, CacaoVerifier};
 use async_trait::async_trait;
 use multidid::MultiDid;
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,9 @@ use varsig::{
     VarSig,
 };
 
-pub type UcanCacao<NB = Value> = Cacao<JoseSig<DAG_JSON_ENCODING>, BTreeMap<String, Value>, NB>;
+pub type UcanSignature = JoseSig<DAG_JSON_ENCODING>;
+pub type UcanFacts<F> = BTreeMap<String, F>;
+pub type UcanCacao<F = Value, NB = Value> = Cacao<UcanSignature, UcanFacts<F>, NB>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -27,14 +29,13 @@ pub enum Error {
     Ucan(#[from] ssi_ucan::Error),
 }
 
-impl<NB> TryFrom<Ucan<Value, NB>> for UcanCacao<NB> {
+impl<F, NB> TryFrom<Ucan<F, NB>> for UcanCacao<F, NB> {
     type Error = Error;
-    fn try_from(ucan: Ucan<Value, NB>) -> Result<Self, Self::Error> {
-        let (header, payload, signature) = ucan.into_inner();
+    fn try_from(ucan: Ucan<F, NB>) -> Result<Self, Self::Error> {
+        let (alg, payload, signature) = ucan.into_inner();
         Ok(Self {
             issuer: MultiDid::from_str(&payload.issuer)?,
             audience: MultiDid::from_str(&payload.audience)?,
-            signature: VarSig::new(match_alg(header.algorithm, signature)?),
             version: "0.2.0".to_string(),
             attenuations: payload.capabilities,
             nonce: payload.nonce,
@@ -43,12 +44,13 @@ impl<NB> TryFrom<Ucan<Value, NB>> for UcanCacao<NB> {
             not_before: payload.not_before,
             expiration: payload.expiration,
             facts: payload.facts,
+            signature: VarSig::new(match_alg(alg, signature)?),
         })
     }
 }
 
-impl<NB> From<UcanCacao<NB>> for Ucan<Value, NB> {
-    fn from(cacao: UcanCacao<NB>) -> Self {
+impl<F, NB> From<UcanCacao<F, NB>> for Ucan<F, NB> {
+    fn from(cacao: UcanCacao<F, NB>) -> Self {
         let (algorithm, signature) = match cacao.signature.into_inner() {
             JoseSig::Ed25519(s) => (Algorithm::EdDSA, s.bytes().to_vec()),
             JoseSig::Es256(s) => (Algorithm::ES256, s.bytes().to_vec()),
@@ -65,7 +67,7 @@ impl<NB> From<UcanCacao<NB>> for Ucan<Value, NB> {
         payload.not_before = cacao.not_before;
         payload.expiration = cacao.expiration;
         payload.facts = cacao.facts;
-        payload.sign(todo!(), signature)
+        payload.sign(algorithm, signature)
     }
 }
 
@@ -90,16 +92,17 @@ fn match_alg<const E: u64>(a: Algorithm, s: Vec<u8>) -> Result<JoseSig<E>, Error
 }
 
 #[async_trait]
-impl<NB, T> Verifier<NB, JoseSig<DAG_JSON_ENCODING>> for T
+impl<NB, R, F> CacaoVerifier<UcanSignature, UcanFacts<F>, NB> for R
 where
-    T: DIDResolver,
-    NB: Send + Sync + Serialize + for<'d> Deserialize<'d>,
+    R: DIDResolver,
+    F: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
+    NB: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
 {
-    type Facts = BTreeMap<String, Value>;
     type Error = Error;
-    async fn verify(&self, cacao: &UcanCacao<NB>) -> Result<(), Self::Error> {
-        let ucan = Ucan::<Value, NB>::from(*cacao.clone()).encode_as_canonicalized_jwt()?;
-        Ucan::<Value, NB>::decode_and_verify(&ucan, self).await?;
+
+    async fn verify(&self, cacao: &UcanCacao<F, NB>) -> Result<(), Self::Error> {
+        let ucan = Ucan::<F, NB>::from(cacao.clone()).encode_as_canonicalized_jwt()?;
+        Ucan::<F, NB>::decode_and_verify(&ucan, self).await?;
         Ok(())
     }
 }
