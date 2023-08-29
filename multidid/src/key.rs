@@ -13,7 +13,7 @@ const P384_CODEC: u64 = 0x1201;
 const P521_CODEC: u64 = 0x1202;
 // const RSA_CODEC: u64 = 0x1205;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub enum DidKeyTypes {
     Secp256k1([u8; 33]),
     Bls12_381G1([u8; 64]),

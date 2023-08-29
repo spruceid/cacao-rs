@@ -18,7 +18,7 @@ pub use pkh::DidPkhTypes;
 
 const MULTIDID_VARINT_TAG: u16 = 0x9d1a;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub struct MultiDid {
     method: Method,
     fragment: Option<UriFragmentString>,

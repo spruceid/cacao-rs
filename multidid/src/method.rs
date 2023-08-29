@@ -5,7 +5,7 @@ use unsigned_varint::io::read_u64;
 
 pub const RAW_CODEC: u64 = 0x55;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub enum Method {
     Pkh(DidPkhTypes),
     Key(DidKeyTypes),
