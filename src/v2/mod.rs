@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use ucan_capabilities_object::Capabilities;
 
-pub mod either;
+pub mod common;
 pub mod recap_cacao;
 pub mod ucan_cacao;
 
