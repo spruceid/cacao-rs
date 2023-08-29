@@ -1,4 +1,4 @@
-use super::{Cacao, Verifier};
+use super::{Cacao, CacaoVerifier};
 use async_trait::async_trait;
 use http::uri::Authority;
 use iri_string::types::UriString;
@@ -15,9 +15,10 @@ use varsig::{
     VarSig,
 };
 
-pub type RecapCacao<NB = Value> = Cacao<Ethereum<EIP191_ENCODING>, RecapFacts, NB>;
+pub type RecapSignature = Ethereum<EIP191_ENCODING>;
+pub type RecapCacao<NB = Value> = Cacao<RecapSignature, RecapFacts, NB>;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct RecapFacts {
     #[serde(rename = "iat-z")]
@@ -51,8 +52,6 @@ pub enum Error {
     ExtraDidComponents,
     #[error("The 'facts' field is required for Recap Cacaos")]
     MissingFacts,
-    #[error("Failed to parse chain ID: {0}")]
-    ChainId(#[from] std::num::ParseIntError),
     #[error("Incorrect Version, expected '1', found: {0}")]
     IncorrectVersion(String),
     #[error("SIWE messages must have a nonce")]
@@ -96,14 +95,11 @@ where
         resources.pop();
         Ok(Self {
             issuer: MultiDid::new(
-                Method::Pkh(DidPkhTypes::Eip155(
-                    (siwe.chain_id.to_string(), siwe.address).into(),
-                )),
+                Method::Pkh(DidPkhTypes::Eip155((siwe.chain_id, siwe.address).into())),
                 None,
                 None,
             ),
             audience: MultiDid::from_str(siwe.uri.as_str())?,
-            signature: VarSig::new(Ethereum::new(sig)),
             version: (siwe.version as u8).to_string(),
             attenuations,
             nonce: Some(siwe.nonce),
@@ -120,6 +116,7 @@ where
                 resources,
                 statement,
             }),
+            signature: VarSig::new(Ethereum::new(sig)),
         })
     }
 }
@@ -152,7 +149,7 @@ where
                     .version
                     .parse()
                     .map_err(|_| Error::IncorrectVersion(cacao.version))?,
-                chain_id: chain_id.parse()?,
+                chain_id,
                 nonce: cacao.nonce.ok_or(Error::MissingNonce)?,
                 issued_at: make_ts(cacao.issued_at.ok_or(Error::MissingIat)?, &facts.iat_info)?,
                 expiration_time: match (cacao.expiration, facts.exp_info) {
@@ -238,17 +235,18 @@ where
     Authority::from_str(&s).map_err(serde::de::Error::custom)
 }
 
-pub struct RecapVerify;
+#[derive(Default)]
+pub struct RecapVerify(());
 
 #[async_trait]
-impl<NB> Verifier<NB, Ethereum<EIP191_ENCODING>> for RecapVerify
+impl<NB> CacaoVerifier<RecapSignature, RecapFacts, NB> for RecapVerify
 where
-    NB: Send + Sync + Serialize,
+    NB: Send + Sync + Serialize + Clone,
 {
-    type Facts = RecapFacts;
     type Error = Error;
+
     async fn verify(&self, cacao: &RecapCacao<NB>) -> Result<(), Self::Error> {
-        let (message, signature) = <(Message, [u8; 65])>::try_from(*cacao.clone())?;
+        let (message, signature) = <(Message, [u8; 65])>::try_from(cacao.clone())?;
         message.verify_eip191(&signature)?;
         Ok(())
     }

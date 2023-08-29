@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use libipld::{cid::Cid, Ipld};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fmt::Debug};
+use std::fmt::Debug;
 use ucan_capabilities_object::Capabilities;
 
 pub mod either;
@@ -9,24 +9,15 @@ pub mod recap_cacao;
 pub mod ucan_cacao;
 
 use multidid::MultiDid;
-use varsig::{
-    common::{Ethereum, JoseSig, DAG_JSON_ENCODING, EIP191_ENCODING},
-    EitherSignature, VarSig, VarSigTrait,
-};
+use varsig::{VarSig, VarSigTrait};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, Hash)]
 #[serde(deny_unknown_fields)]
-pub struct Cacao<
-    S = EitherSignature<JoseSig<DAG_JSON_ENCODING>, Ethereum<EIP191_ENCODING>>,
-    F = BTreeMap<String, Ipld>,
-    NB = Ipld,
-> {
+pub struct Cacao<S, F, NB = Ipld> {
     #[serde(rename = "iss")]
     issuer: MultiDid,
     #[serde(rename = "aud")]
     audience: MultiDid,
-    #[serde(rename = "s", bound = "S: VarSigTrait")]
-    signature: VarSig<S>,
     #[serde(rename = "v")]
     version: String,
     #[serde(rename = "att")]
@@ -43,6 +34,8 @@ pub struct Cacao<
     expiration: Option<u64>,
     #[serde(rename = "fct", skip_serializing_if = "Option::is_none", default)]
     facts: Option<F>,
+    #[serde(rename = "s", bound = "S: VarSigTrait")]
+    signature: VarSig<S>,
 }
 
 impl<S, F, NB> Cacao<S, F, NB> {
@@ -78,13 +71,17 @@ impl<S, F, NB> Cacao<S, F, NB> {
         self.expiration
     }
 
-    pub fn facts(&self) -> Option<&F> {
+    fn facts(&self) -> Option<&F> {
         self.facts.as_ref()
+    }
+
+    fn signature(&self) -> &VarSig<S> {
+        &self.signature
     }
 
     pub async fn verify<V>(&self, verifier: &V) -> Result<(), V::Error>
     where
-        V: Verifier<NB, S, Facts = F>,
+        V: CacaoVerifier<S, F, NB>,
         NB: Send + Sync,
     {
         verifier.verify(self).await
@@ -92,10 +89,10 @@ impl<S, F, NB> Cacao<S, F, NB> {
 }
 
 #[async_trait]
-pub trait Verifier<NB, S> {
-    type Facts;
+pub trait CacaoVerifier<S, F, NB> {
     type Error: std::error::Error;
-    async fn verify(&self, cacao: &Cacao<S, Self::Facts, NB>) -> Result<(), Self::Error>;
+
+    async fn verify(&self, cacao: &Cacao<S, F, NB>) -> Result<(), Self::Error>;
 }
 
 #[cfg(test)]
