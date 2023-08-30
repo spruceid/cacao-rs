@@ -20,6 +20,9 @@ impl<const HASH: u64, const ENCODING: u64> Rsa<HASH, ENCODING> {
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
+    pub fn into_inner(self) -> Vec<u8> {
+        self.bytes
+    }
 }
 
 pub type Rsa256<const ENCODING: u64> = Rsa<{ SHA256 as u64 }, ENCODING>;

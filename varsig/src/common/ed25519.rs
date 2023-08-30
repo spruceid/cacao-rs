@@ -20,6 +20,9 @@ impl<const ENCODING: u64> Ed25519<ENCODING> {
     pub fn bytes(&self) -> &[u8; 64] {
         &self.bytes
     }
+    pub fn into_inner(&self) -> [u8; 64] {
+        self.bytes
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
