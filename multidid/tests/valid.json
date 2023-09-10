@@ -20,4 +20,20 @@
   "encoded": "9d1ae70103874c15c7fda20e539c6e5ba573c139884c351188799f5458b4b41f7924f235cd00",
   "decoded": "did:key:zQ3shokFTS3brHcDQrn82RUDfCZESWL1ZdCEJwekUDPQiYBme",
   "method": "key"
+}, {
+  "encoded": "9d1aca0101000000000019d6689c085ae165831e93000c5b86d784abdf01eb30f21868deb8de53abacb7b3e3109f",
+  "decoded": "did:pkh:bip122:000000000019d6689c085ae165831e93:128Lkh3S7CkDTBZ8W7BbpsN3YYizJMp8p6",
+  "method": "pkh"
+}, {
+  "encoded": "9d1aca010201ab16a96d359ec26a11e2c2b3d8f8b8942d5bfcdb",
+  "decoded": "did:pkh:eip155:1:0xab16a96D359eC26a11e2C2b3d8f8B8942d5Bfcdb",
+  "method": "pkh"
+}, {
+  "encoded": "9d1aca01030b636f736d6f736875622d335ab89f81c0cbd3093e17c26c360796cbb0eabc92",
+  "decoded": "did:pkh:cosmos:cosmoshub-3:cosmos1t2uflqwqe0fsj0shcfkrvpukewcw40yjj6hdc0",
+  "method": "pkh"
+}, {
+  "encoded": "9d1aca010409534e5f474f45524c4902dd1b492765c064eac4039e3841aa5f382773b598097a40073bd8b48170ab57",
+  "decoded": "did:pkh:starknet:SN_GOERLI:0x02dd1b492765c064eac4039e3841aa5f382773b598097a40073bd8b48170ab57",
+  "method": "pkh"
 }]

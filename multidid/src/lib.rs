@@ -266,11 +266,23 @@ mod tests {
     #[test]
     fn it_works() {
         let valid: Vec<ValidTest> = serde_json::from_str(VALID_JSON).unwrap();
+        for test in &valid {
+            if test.method.as_str() == "raw" {
+                let s = test.decoded.as_str()[4..]
+                    .split_once("?")
+                    .map(|(a, b)| a)
+                    .unwrap_or(test.decoded.as_str());
+                println!("{:x}", s.as_bytes().len());
+                println!("{}", hex::encode(s.as_bytes()));
+            }
+        }
         for test in valid {
             let did = MultiDid::from_reader(&mut test.encoded.as_slice()).unwrap();
             assert_eq!(did.query, test.query);
             assert_eq!(did.fragment, test.fragment);
             assert_eq!(did.to_vec(), test.encoded);
+            assert_eq!(did.to_string(), test.decoded);
+            assert_eq!(did, test.decoded.parse().unwrap());
             assert!(match (did.method(), test.method.as_str()) {
                 (Method::Key(_), "key") => true,
                 (Method::Pkh(_), "pkh") => true,
