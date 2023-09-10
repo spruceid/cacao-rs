@@ -4,16 +4,19 @@ use multidid::MultiDid;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ssi_dids::did_resolve::DIDResolver;
-use ssi_jwk::Algorithm;
-use ssi_ucan::{Payload, Ucan};
+use ssi_ucan::{
+    common::Common, jose::Signature, jwt::Algorithm, webauthn::Webauthn, Payload, Ucan,
+};
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use varsig::{
-    common::{Ed25519, Es256, Es256K, JoseSig, Rsa256, Rsa512, DAG_JSON_ENCODING},
-    VarSig,
+    common::{
+        Ed25519, Es256, Es256K, Es512, JoseSig, PasskeySig, Rsa256, Rsa512, DAG_CBOR_ENCODING,
+    },
+    EitherSignature, VarSig,
 };
 
-pub type UcanSignature = JoseSig<DAG_JSON_ENCODING>;
+pub type UcanSignature = EitherSignature<JoseSig<DAG_CBOR_ENCODING>, PasskeySig<DAG_CBOR_ENCODING>>;
 pub type UcanFacts<F> = BTreeMap<String, F>;
 pub type UcanCacao<F = Value, NB = Value> = Cacao<UcanSignature, UcanFacts<F>, NB>;
 

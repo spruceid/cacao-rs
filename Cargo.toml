@@ -25,14 +25,14 @@ serde = "1"
 serde_json = "1"
 libipld = { version = "0.16", default-features = false, features = ["derive", "serde-codec", "dag-cbor"]}
 ucan-capabilities-object = "0.1"
-ssi-ucan = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10" }
-ssi-jwk = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10"  }
-ssi-jwt = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10"  }
-ssi-dids = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10"  }
+ssi-ucan = { path = "../ssi/ssi-ucan" }
+ssi-jwk = { path = "../ssi/ssi-jwk" }
+ssi-jwt = { path = "../ssi/ssi-jwt" }
+ssi-dids = { path = "../ssi/ssi-dids" }
 time = { version = "0.3", features = ["parsing", "formatting", "serde"] }
 http = "0.2.5"
 hex = { version = "0.4", optional = true }
-varsig = { version = "0.1", path = "./varsig" }
+varsig = { version = "0.1", path = "./varsig", features = ["webauthn"] }
 multidid = { version = "0.1", path = "./multidid" }
 siwe-recap = { version = "0.2" }
 

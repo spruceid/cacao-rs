@@ -28,6 +28,47 @@ impl<T> CommonVerifier<T> {
     }
 }
 
+impl<F, NB> CommonCacao<F, NB> {
+    pub fn get_ucan(self) -> Option<Ucan<Common, F, NB>> {
+        let signature = match self.signature.into_inner() {
+            EitherSignature::A(_) => return None,
+            EitherSignature::B(ucan) => match ucan {
+                EitherSignature::A(JoseSig::EdDSA(s)) => {
+                    Common::Jose(Signature::EdDSA(s.into_inner()))
+                }
+                EitherSignature::A(JoseSig::Es256(s)) => {
+                    Common::Jose(Signature::ES256(s.into_inner()))
+                }
+                EitherSignature::A(JoseSig::Es512(s)) => {
+                    Common::Jose(Signature::ES512(s.into_inner()))
+                }
+                EitherSignature::A(JoseSig::Es256K(s)) => {
+                    Common::Jose(Signature::ES256K(s.into_inner()))
+                }
+                EitherSignature::A(JoseSig::Rsa256(s)) => {
+                    Common::Jose(Signature::RS256(s.into_inner()))
+                }
+                EitherSignature::A(JoseSig::Rsa512(s)) => {
+                    Common::Jose(Signature::RS512(s.into_inner()))
+                }
+                EitherSignature::B(webauthn) => Common::Webauthn(webauthn.into_inner()),
+            },
+        };
+        let mut payload = Payload::new(self.issuer.to_string(), self.audience.to_string());
+        payload.capabilities = self.attenuations;
+        payload.nonce = self.nonce;
+        payload.proof = self.proof;
+        payload.issued_at = self.issued_at;
+        payload.not_before = self.not_before;
+        payload.expiration = self.expiration;
+        payload.facts = self.facts.and_then(|f| match f {
+            CommonFacts::Ucan(f) => Some(f),
+            CommonFacts::Recap(_) => None,
+        });
+        Some(payload.sign(signature))
+    }
+}
+
 impl<F, NB> CommonCacao<F, NB>
 where
     F: Clone + Serialize,
