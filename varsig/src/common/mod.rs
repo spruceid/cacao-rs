@@ -64,7 +64,7 @@ pub enum JoseSig<const E: u64> {
     Es512(Es512<E>),
     Rsa256(Rsa256<E>),
     Rsa512(Rsa512<E>),
-    Ed25519(Ed25519<E>),
+    EdDSA(Ed25519<E>),
     Es256K(Es256K<E>),
 }
 
@@ -105,7 +105,7 @@ impl<const E: u64> VarSigTrait for JoseSig<E> {
                 Rsa512::<E>::from_reader(buf.chain(reader)).map_err(convert_err)?,
             ))
         } else if Ed25519::<E>::valid_header(&buf) {
-            Ok(Self::Ed25519(
+            Ok(Self::EdDSA(
                 Ed25519::<E>::from_reader(buf.chain(reader)).map_err(convert_err)?,
             ))
         } else if Es256K::<E>::valid_header(&buf) {
@@ -126,7 +126,7 @@ impl<const E: u64> VarSigTrait for JoseSig<E> {
             Self::Es512(s) => s.to_writer(writer),
             Self::Rsa256(s) => s.to_writer(writer),
             Self::Rsa512(s) => s.to_writer(writer),
-            Self::Ed25519(s) => s.to_writer(writer),
+            Self::EdDSA(s) => s.to_writer(writer),
             Self::Es256K(s) => s.to_writer(writer),
         }
     }
