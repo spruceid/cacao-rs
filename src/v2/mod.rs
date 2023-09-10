@@ -8,7 +8,9 @@ pub mod common;
 pub mod recap_cacao;
 pub mod ucan_cacao;
 
+pub use multidid;
 use multidid::MultiDid;
+pub use varsig;
 use varsig::{VarSig, VarSigTrait};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, Hash)]
@@ -32,7 +34,11 @@ pub struct Cacao<S, F, NB = Ipld> {
     not_before: Option<u64>,
     #[serde(rename = "exp", skip_serializing_if = "Option::is_none", default)]
     expiration: Option<u64>,
-    #[serde(rename = "fct", skip_serializing_if = "Option::is_none", default)]
+    #[serde(
+        rename = "fct",
+        skip_serializing_if = "Option::is_none",
+        default = "Option::default"
+    )]
     facts: Option<F>,
     #[serde(rename = "s", bound = "S: VarSigTrait")]
     signature: VarSig<S>,
@@ -79,6 +85,15 @@ impl<S, F, NB> Cacao<S, F, NB> {
         &self.signature
     }
 
+    pub fn valid_at_time<const SKEW: u64, T: PartialOrd<u64>>(&self, time: T) -> bool {
+        self.expiration.map_or(true, |exp| time < exp + SKEW)
+            && self.not_before.map_or(true, |nbf| time >= nbf - SKEW)
+            && self.issued_at.map_or(true, |iat| {
+                self.not_before.map_or(true, |nbf| nbf < iat)
+                    && self.expiration.map_or(true, |exp| iat < exp)
+            })
+    }
+
     pub async fn verify<V>(&self, verifier: &V) -> Result<(), V::Error>
     where
         V: CacaoVerifier<S, F, NB>,
@@ -88,7 +103,8 @@ impl<S, F, NB> Cacao<S, F, NB> {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait CacaoVerifier<S, F, NB> {
     type Error: std::error::Error;
 
