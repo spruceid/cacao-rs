@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 pub use siwe;
 use siwe::{Message, TimeStamp};
-use siwe_recap::Capability;
+pub use siwe_recap::Capability;
 use std::{fmt::Debug, str::FromStr};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime, UtcOffset};
 use varsig::{
@@ -238,7 +238,8 @@ where
 #[derive(Default)]
 pub struct RecapVerify(());
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<NB> CacaoVerifier<RecapSignature, RecapFacts, NB> for RecapVerify
 where
     NB: Send + Sync + Serialize + Clone,
