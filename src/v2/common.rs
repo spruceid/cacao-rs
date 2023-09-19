@@ -23,6 +23,7 @@ pub enum CommonFacts<F = Value> {
 
 pub type CommonCacao<F = Value, NB = Value> = Cacao<CommonSignature, CommonFacts<F>, NB>;
 
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CommonVerifier<T>(T);
 
 impl<T> CommonVerifier<T> {

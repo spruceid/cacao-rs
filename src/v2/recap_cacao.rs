@@ -235,7 +235,7 @@ where
     Authority::from_str(&s).map_err(serde::de::Error::custom)
 }
 
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct RecapVerify(());
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
