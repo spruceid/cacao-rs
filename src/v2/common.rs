@@ -50,7 +50,7 @@ where
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum Error<U: std::error::Error = VerificationError<jose::Error>> {
+pub enum Error<U: std::error::Error = UcanError> {
     #[error(transparent)]
     Ucan(U),
     #[error(transparent)]
@@ -59,15 +59,15 @@ pub enum Error<U: std::error::Error = VerificationError<jose::Error>> {
     Mismatch,
 }
 
-impl From<VerificationError<jose::Error>> for Error {
-    fn from(e: VerificationError<jose::Error>) -> Self {
+impl From<UcanError> for Error {
+    fn from(e: UcanError) -> Self {
         Self::Ucan(e)
     }
 }
 
-impl From<UcanError> for Error<UcanError> {
-    fn from(e: UcanError) -> Self {
-        Self::Ucan(e)
+impl From<VerificationError<jose::Error>> for Error {
+    fn from(e: VerificationError<jose::Error>) -> Self {
+        Self::Ucan(e.into())
     }
 }
 
@@ -241,7 +241,7 @@ impl<F, NB> TryFrom<CommonCacao<F, NB>> for UcanCacao<F, NB> {
 }
 
 impl<F, NB> TryFrom<Ucan<F, NB, Signature>> for CommonCacao<F, NB> {
-    type Error = Error<UcanError>;
+    type Error = Error;
     fn try_from(ucan: Ucan<F, NB, Signature>) -> Result<Self, Self::Error> {
         Ok(UcanCacao::try_from(ucan)?.into())
     }

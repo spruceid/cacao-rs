@@ -6,7 +6,7 @@ use serde_json::Value;
 use ssi_dids::did_resolve::DIDResolver;
 use ssi_ucan::{
     jose::{self, Signature, VerificationError},
-    Payload, Ucan,
+    jwt, Payload, Ucan,
 };
 use std::collections::BTreeMap;
 use std::str::FromStr;
@@ -23,6 +23,14 @@ pub type UcanCacao<F = Value, NB = Value> = Cacao<UcanSignature, UcanFacts<F>, N
 pub enum Error {
     #[error(transparent)]
     MultididParse(#[from] multidid::ParseErr),
+    #[error(transparent)]
+    Verification(#[from] VerificationError<jose::Error>),
+}
+
+impl From<jwt::EncodeError> for Error {
+    fn from(e: jwt::EncodeError) -> Self {
+        Self::Verification(e.into())
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -33,9 +41,9 @@ where
     F: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
     NB: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
 {
-    type Error = VerificationError<jose::Error>;
+    type Error = Error;
 
-    async fn verify(&self, cacao: &UcanCacao<F, NB>) -> Result<(), VerificationError<jose::Error>> {
+    async fn verify(&self, cacao: &UcanCacao<F, NB>) -> Result<(), Error> {
         let ucan = Ucan::<F, NB, Signature>::from(cacao.clone()).encode()?;
         Ucan::<F, NB, Signature>::decode_and_verify_jwt(&ucan, *self, None).await?;
         Ok(())
