@@ -85,9 +85,12 @@ impl<S, F, NB> Cacao<S, F, NB> {
         &self.signature
     }
 
-    pub fn valid_at_time<const SKEW: u64, T: PartialOrd<u64>>(&self, time: T) -> bool {
-        self.expiration.map_or(true, |exp| time < exp + SKEW)
-            && self.not_before.map_or(true, |nbf| time >= nbf - SKEW)
+    pub fn valid_at_time(&self, time: u64, skew: Option<u64>) -> bool {
+        self.expiration
+            .map_or(true, |exp| time < exp + skew.unwrap_or(0))
+            && self
+                .not_before
+                .map_or(true, |nbf| time >= nbf - skew.unwrap_or(0))
             && self.issued_at.map_or(true, |iat| {
                 self.not_before.map_or(true, |nbf| nbf < iat)
                     && self.expiration.map_or(true, |exp| iat < exp)
