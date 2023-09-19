@@ -6,8 +6,11 @@ use super::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use ssi_ucan::{common::Common, jose::Signature, jwt::UcanEncode, Payload, Ucan};
-use varsig::{common::JoseSig, either::EitherSignature, VarSig};
+use ssi_ucan::{
+    jose::{self, Signature, VerificationError},
+    Ucan,
+};
+use varsig::{either::EitherSignature, VarSig};
 
 type CommonSignature = EitherSignature<RecapSignature, UcanSignature>;
 
@@ -28,25 +31,8 @@ impl<T> CommonVerifier<T> {
     }
 }
 
-impl<F, NB> CommonCacao<F, NB>
-where
-    F: Clone + Serialize,
-    NB: Clone + Serialize,
-{
-    pub fn serialize_jwt(&self) -> Result<Option<String>, Error> {
-        Ok(match self.signature.sig() {
-            CommonSignature::A(_) => None,
-            CommonSignature::B(_) => self
-                .clone()
-                .get_ucan()
-                .map(|ucan| ucan.encode())
-                .transpose()?,
-        })
-    }
-}
-
 #[derive(thiserror::Error, Debug)]
-pub enum Error<U: std::error::Error = UcanError> {
+pub enum Error<U: std::error::Error = VerificationError<jose::Error>> {
     #[error(transparent)]
     Ucan(U),
     #[error(transparent)]
@@ -55,9 +41,15 @@ pub enum Error<U: std::error::Error = UcanError> {
     Mismatch,
 }
 
-impl From<ssi_ucan::Error> for Error {
-    fn from(e: ssi_ucan::Error) -> Self {
-        Self::Ucan(e.into())
+impl From<VerificationError<jose::Error>> for Error {
+    fn from(e: VerificationError<jose::Error>) -> Self {
+        Self::Ucan(e)
+    }
+}
+
+impl From<UcanError> for Error<UcanError> {
+    fn from(e: UcanError) -> Self {
+        Self::Ucan(e)
     }
 }
 
@@ -230,11 +222,9 @@ impl<F, NB> TryFrom<CommonCacao<F, NB>> for UcanCacao<F, NB> {
     }
 }
 
-impl<F, NB> TryFrom<Ucan<Common, F, NB>> for CommonCacao<F, NB> {
-    type Error = Error;
-    fn try_from(ucan: Ucan<Common, F, NB>) -> Result<Self, Self::Error> {
-        Ok(UcanCacao::try_from(ucan)
-            .map(Self::from)
-            .map_err(Error::Ucan)?)
+impl<F, NB> TryFrom<Ucan<F, NB, Signature>> for CommonCacao<F, NB> {
+    type Error = Error<UcanError>;
+    fn try_from(ucan: Ucan<F, NB, Signature>) -> Result<Self, Self::Error> {
+        Ok(UcanCacao::try_from(ucan)?.into())
     }
 }
