@@ -32,6 +32,23 @@ impl<T> CommonVerifier<T> {
     }
 }
 
+impl<F, NB> CommonCacao<F, NB>
+where
+    F: Clone + Serialize,
+    NB: Clone + Serialize,
+{
+    pub fn serialize_jwt(&self) -> Result<Option<String>, Error> {
+        Ok(match self.signature.sig() {
+            CommonSignature::A(_) => None,
+            CommonSignature::B(_) => UcanCacao::<F, NB>::try_from(self.clone())
+                .ok()
+                .map(|uc| Ucan::<F, NB>::from(uc).encode())
+                .transpose()
+                .map_err(|e| Error::Ucan(e.into()))?,
+        })
+    }
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum Error<U: std::error::Error = VerificationError<jose::Error>> {
     #[error(transparent)]
