@@ -23,17 +23,22 @@ pub type RecapCacao<NB = Value> = Cacao<RecapSignature, RecapFacts, NB>;
 pub struct RecapFacts {
     #[serde(rename = "iat-z")]
     iat_info: String,
-    #[serde(rename = "nbf-z")]
+    #[serde(rename = "nbf-z", skip_serializing_if = "Option::is_none", default)]
     nbf_info: Option<String>,
-    #[serde(rename = "nbf-z")]
+    #[serde(rename = "nbf-z", skip_serializing_if = "Option::is_none", default)]
     exp_info: Option<String>,
     #[serde(
         serialize_with = "serialize_authority",
         deserialize_with = "deserialize_authority"
     )]
     domain: Authority,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     statement: Option<String>,
-    #[serde(rename = "request-id")]
+    #[serde(
+        rename = "request-id",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     request_id: Option<String>,
     resources: Vec<UriString>,
 }
@@ -86,7 +91,13 @@ where
         };
         let statement = siwe.statement.and_then(|s| {
             s.get(0..(s.len() - recap.as_ref().map(|r| r.to_statement().len()).unwrap_or(0)))
-                .map(|s| s.to_string())
+                .and_then(|s| {
+                    if s.len() == 0 {
+                        None
+                    } else {
+                        Some(s.to_string())
+                    }
+                })
         });
         let (attenuations, proof) = recap
             .map(|r| r.into_inner())
