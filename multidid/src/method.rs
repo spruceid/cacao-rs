@@ -1,7 +1,10 @@
 use crate::{key, pkh, pkh::PKH_CODEC, DidKeyTypes, DidPkhTypes, Error};
 use std::io::{Error as IoError, Read, Write};
 use std::{fmt::Display, str::FromStr};
-use unsigned_varint::io::read_u64;
+use unsigned_varint::{
+    encode::{u64 as write_u64, u64_buffer},
+    io::read_u64,
+};
 
 pub const RAW_CODEC: u64 = 0x55;
 
@@ -50,6 +53,8 @@ impl Method {
     pub(crate) fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), IoError> {
         match self {
             Self::Raw(buf) => {
+                let mut cbuf = u64_buffer();
+                writer.write_all(write_u64(RAW_CODEC, &mut cbuf))?;
                 writer.write_all(buf.as_bytes())?;
             }
             Self::Pkh(pkh) => {

@@ -55,19 +55,44 @@ impl MultiDid {
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
+        let plen = self
+            .fragment
+            .as_ref()
+            .map(|f| f.as_str().len() + 1)
+            .unwrap_or(0)
+            + self
+                .query
+                .as_ref()
+                .map(|q| q.as_str().len() + 1)
+                .unwrap_or(0);
+        let mut len_buf = u64_buffer();
         [
-            [0x9d, 0x1a].to_vec(),
-            match (&self.query, &self.fragment) {
-                (Some(q), Some(f)) => [
-                    self.method.to_vec(),
-                    q.as_str().as_bytes().to_vec(),
-                    f.as_str().as_bytes().to_vec(),
-                ]
-                .concat(),
-                (None, Some(f)) => [self.method.to_vec(), f.as_str().as_bytes().to_vec()].concat(),
-                (Some(q), None) => [self.method.to_vec(), q.as_str().as_bytes().to_vec()].concat(),
-                (None, None) => self.method.to_vec(),
+            MULTIDID_VARINT_TAG.to_be_bytes().to_vec(),
+            match self.method() {
+                Method::Raw(raw) => {
+                    let len: u64 = (plen + raw.len()) as u64;
+                    let mut codec_buf = u64_buffer();
+                    [
+                        write_u64(method::RAW_CODEC, &mut codec_buf),
+                        write_u64(len, &mut len_buf),
+                    ]
+                    .concat()
+                }
+                _ => Vec::new(),
             },
+            self.method.to_vec(),
+            match self.method() {
+                Method::Raw(_) => Vec::new(),
+                _ => write_u64(plen as u64, &mut len_buf).to_vec(),
+            },
+            self.query
+                .as_ref()
+                .map(|q| format!("?{q}").as_bytes().to_vec())
+                .unwrap_or_default(),
+            self.fragment
+                .as_ref()
+                .map(|f| format!("#{f}").as_bytes().to_vec())
+                .unwrap_or_default(),
         ]
         .concat()
     }
@@ -123,36 +148,24 @@ impl MultiDid {
         // write codec
         let mut buf = u64_buffer();
         writer.write_all(write_u64(self.method.codec(), &mut buf))?;
+        let plen = self
+            .fragment
+            .as_ref()
+            .map(|f| f.as_str().len() + 1)
+            .unwrap_or(0)
+            + self
+                .query
+                .as_ref()
+                .map(|q| q.as_str().len() + 1)
+                .unwrap_or(0);
 
         match self.method {
             Method::Pkh(_) | Method::Key(_) => {
                 self.method.to_writer(writer)?;
-                let len: u64 = (self
-                    .fragment
-                    .as_ref()
-                    .map(|f| f.as_str().len() + 1)
-                    .unwrap_or(0)
-                    + self
-                        .query
-                        .as_ref()
-                        .map(|q| q.as_str().len() + 1)
-                        .unwrap_or(0)) as u64;
-                writer.write_all(write_u64(len, &mut buf))?;
+                writer.write_all(write_u64(plen as u64, &mut buf))?;
             }
             Method::Raw(ref raw) => {
-                let len: u64 = (self
-                    .fragment
-                    .as_ref()
-                    .map(|f| f.as_str().len() + 1)
-                    .unwrap_or(0)
-                    + self
-                        .query
-                        .as_ref()
-                        .map(|q| q.as_str().len() + 1)
-                        .unwrap_or(0)
-                    + raw.len()) as u64;
-                writer.write_all(&[method::RAW_CODEC as u8])?;
-                writer.write_all(write_u64(len, &mut buf))?;
+                writer.write_all(write_u64((plen + raw.len()) as u64, &mut buf))?;
                 writer.write_all(raw.as_bytes())?;
             }
         };
@@ -202,6 +215,7 @@ impl FromStr for MultiDid {
     type Err = ParseErr;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.strip_prefix("did:").ok_or(method::ParseErr::Invalid)?;
         let (did, query, fragment) = if let Some((did, rest)) = s.split_once('?') {
             if let Some((query, fragment)) = rest.split_once('#') {
                 (did, Some(query), Some(fragment))
@@ -270,22 +284,13 @@ mod tests {
     #[test]
     fn it_works() {
         let valid: Vec<ValidTest> = serde_json::from_str(VALID_JSON).unwrap();
-        for test in &valid {
-            if test.method.as_str() == "raw" {
-                let s = test.decoded.as_str()[4..]
-                    .split_once("?")
-                    .map(|(a, b)| a)
-                    .unwrap_or(test.decoded.as_str());
-                println!("{:x}", s.as_bytes().len());
-                println!("{}", hex::encode(s.as_bytes()));
-            }
-        }
         for test in valid {
             let did = MultiDid::from_reader(&mut test.encoded.as_slice()).unwrap();
             assert_eq!(did.query, test.query);
             assert_eq!(did.fragment, test.fragment);
             assert_eq!(did.to_vec(), test.encoded);
             assert_eq!(did.to_string(), test.decoded);
+            assert_eq!(did, MultiDid::from_bytes(&test.encoded).unwrap());
             assert_eq!(did, test.decoded.parse().unwrap());
             assert!(match (did.method(), test.method.as_str()) {
                 (Method::Key(_), "key") => true,
