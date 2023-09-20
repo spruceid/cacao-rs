@@ -6,6 +6,7 @@ use super::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use siwe::Message;
 use ssi_ucan::{
     jose::{self, Signature, VerificationError},
     Ucan,
@@ -244,5 +245,15 @@ impl<F, NB> TryFrom<Ucan<F, NB, Signature>> for CommonCacao<F, NB> {
     type Error = Error;
     fn try_from(ucan: Ucan<F, NB, Signature>) -> Result<Self, Self::Error> {
         Ok(UcanCacao::try_from(ucan)?.into())
+    }
+}
+
+impl<F, NB> TryFrom<(Message, [u8; 65])> for CommonCacao<F, NB>
+where
+    NB: for<'d> Deserialize<'d>,
+{
+    type Error = Error;
+    fn try_from(siwe: (Message, [u8; 65])) -> Result<Self, Self::Error> {
+        Ok(RecapCacao::try_from(siwe)?.into())
     }
 }
