@@ -55,17 +55,21 @@ impl MultiDid {
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
-        match (&self.query, &self.fragment) {
-            (Some(q), Some(f)) => [
-                self.method.to_vec(),
-                q.as_str().as_bytes().to_vec(),
-                f.as_str().as_bytes().to_vec(),
-            ]
-            .concat(),
-            (None, Some(f)) => [self.method.to_vec(), f.as_str().as_bytes().to_vec()].concat(),
-            (Some(q), None) => [self.method.to_vec(), q.as_str().as_bytes().to_vec()].concat(),
-            (None, None) => self.method.to_vec(),
-        }
+        [
+            [0x9d, 0x1a].to_vec(),
+            match (&self.query, &self.fragment) {
+                (Some(q), Some(f)) => [
+                    self.method.to_vec(),
+                    q.as_str().as_bytes().to_vec(),
+                    f.as_str().as_bytes().to_vec(),
+                ]
+                .concat(),
+                (None, Some(f)) => [self.method.to_vec(), f.as_str().as_bytes().to_vec()].concat(),
+                (Some(q), None) => [self.method.to_vec(), q.as_str().as_bytes().to_vec()].concat(),
+                (None, None) => self.method.to_vec(),
+            },
+        ]
+        .concat()
     }
 
     pub fn from_bytes(b: &[u8]) -> Result<Self, Error> {
