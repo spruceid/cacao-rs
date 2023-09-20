@@ -14,7 +14,7 @@ pub(crate) const PKH_CODEC: u64 = 0xca;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DidPkhTypes {
-    Bip122(Caip10<[u8; 32], [u8; 25]>),
+    Bip122(Caip10<[u8; 16], [u8; 25]>),
     Eip155(Caip10<u64, [u8; 20]>),
     Cosmos(Caip10<String, CosmosAddress>),
     Starknet(Caip10<String, [u8; 32]>),
@@ -92,9 +92,8 @@ impl DidPkhTypes {
     }
 
     pub(crate) fn to_vec(&self) -> Vec<u8> {
-        let mut vec = Vec::new();
-        vec.push(PKH_CODEC as u8);
         let mut buf = u64_buffer();
+        let mut vec = write_u64(PKH_CODEC, &mut buf).to_vec();
         match self {
             DidPkhTypes::Bip122(caip10) => {
                 vec.extend(write_u64(1, &mut buf));
@@ -122,7 +121,7 @@ impl DidPkhTypes {
                 }
             }
             DidPkhTypes::Starknet(caip10) => {
-                vec.extend(write_u64(3, &mut buf));
+                vec.extend(write_u64(4, &mut buf));
                 vec.extend(write_u64(caip10.chain_id().len() as u64, &mut buf));
                 vec.extend(caip10.chain_id().as_bytes());
                 vec.extend(caip10.address());
@@ -139,7 +138,7 @@ impl DidPkhTypes {
         match pkh_type {
             // bitcoin-like
             1 => {
-                let mut chain_id = [0u8; 32];
+                let mut chain_id = [0u8; 16];
                 reader.read_exact(&mut chain_id)?;
                 let mut address = [0u8; 25];
                 reader.read_exact(&mut address)?;
@@ -195,8 +194,8 @@ impl DidPkhTypes {
     where
         W: ?Sized + Write,
     {
-        writer.write_all(&[PKH_CODEC as u8])?;
         let mut buf = u64_buffer();
+        writer.write_all(write_u64(PKH_CODEC, &mut buf))?;
         match self {
             DidPkhTypes::Bip122(caip10) => {
                 writer.write_all(write_u64(1, &mut buf))?;
@@ -224,7 +223,7 @@ impl DidPkhTypes {
                 }
             }
             DidPkhTypes::Starknet(caip10) => {
-                writer.write_all(write_u64(3, &mut buf))?;
+                writer.write_all(write_u64(4, &mut buf))?;
                 writer.write_all(write_u64(caip10.chain_id().len() as u64, &mut buf))?;
                 writer.write_all(caip10.chain_id().as_bytes())?;
                 writer.write_all(caip10.address())?;
@@ -356,32 +355,26 @@ pub enum Eip55Err {
 
 fn parse_eip55(address: &str) -> Result<[u8; 20], Eip55Err> {
     use hex::FromHex;
-    if !address.starts_with("0x") {
-        Err(Eip55Err::MissingPrefix)
+    let address = address.strip_prefix("0x").ok_or(Eip55Err::MissingPrefix)?;
+    let s = <[u8; 20]>::from_hex(address)?;
+    let sum = eip55(&s);
+    let sum = sum.trim_start_matches("0x");
+    if sum != address {
+        Err(Eip55Err::InvalidChecksum)
     } else {
-        let s = <[u8; 20]>::from_hex(address)?;
-        let sum = eip55(&s);
-        let sum = sum.trim_start_matches("0x");
-        if sum != address {
-            Err(Eip55Err::InvalidChecksum)
-        } else {
-            Ok(s)
-        }
+        Ok(s)
     }
 }
 
 fn parse_starknet(address: &str) -> Result<[u8; 32], Eip55Err> {
     use hex::FromHex;
-    if !address.starts_with("0x") {
-        Err(Eip55Err::MissingPrefix)
+    let address = address.strip_prefix("0x").ok_or(Eip55Err::MissingPrefix)?;
+    let s = <[u8; 32]>::from_hex(address)?;
+    let sum = eip55(&s);
+    let sum = sum.trim_start_matches("0x");
+    if sum != address {
+        Err(Eip55Err::InvalidChecksum)
     } else {
-        let s = <[u8; 32]>::from_hex(address)?;
-        let sum = eip55(&s);
-        let sum = sum.trim_start_matches("0x");
-        if sum != address {
-            Err(Eip55Err::InvalidChecksum)
-        } else {
-            Ok(s)
-        }
+        Ok(s)
     }
 }
