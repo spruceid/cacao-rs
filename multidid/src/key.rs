@@ -104,7 +104,7 @@ impl DidKeyTypes {
     {
         let mut buf = u64_buffer();
         writer.write_all(write_u64(self.codec(), &mut buf))?;
-        writer.write_all(&self.bytes())
+        writer.write_all(self.bytes())
     }
 
     fn bytes(&self) -> &[u8] {

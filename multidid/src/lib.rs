@@ -97,8 +97,8 @@ impl MultiDid {
         .concat()
     }
 
-    pub fn from_bytes(b: &[u8]) -> Result<Self, Error> {
-        Self::from_reader(&mut b.as_ref())
+    pub fn from_bytes(mut b: &[u8]) -> Result<Self, Error> {
+        Self::from_reader(&mut b)
     }
 
     pub fn from_reader<R: Read>(reader: &mut R) -> Result<Self, Error> {

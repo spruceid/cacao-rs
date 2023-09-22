@@ -204,7 +204,7 @@ impl DidPkhTypes {
             }
             DidPkhTypes::Eip155(caip10) => {
                 writer.write_all(write_u64(2, &mut buf))?;
-                writer.write_all(write_u64(*caip10.chain_id() as u64, &mut buf))?;
+                writer.write_all(write_u64(*caip10.chain_id(), &mut buf))?;
                 writer.write_all(caip10.address())?;
             }
             DidPkhTypes::Cosmos(caip10) => {
@@ -269,8 +269,8 @@ impl FromStr for DidPkhTypes {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(
             match s
-                .split_once(":")
-                .and_then(|(method, r)| Some((method, r.split_once(":")?)))
+                .split_once(':')
+                .and_then(|(method, r)| Some((method, r.split_once(':')?)))
             {
                 Some(("bip122", (chain_id, address))) => Self::Bip122(Caip10::new(
                     hex::decode(chain_id)
