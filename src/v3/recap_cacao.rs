@@ -25,7 +25,7 @@ pub struct RecapFacts {
     iat_info: String,
     #[serde(rename = "nbf-z", skip_serializing_if = "Option::is_none", default)]
     nbf_info: Option<String>,
-    #[serde(rename = "nbf-z", skip_serializing_if = "Option::is_none", default)]
+    #[serde(rename = "exp-z", skip_serializing_if = "Option::is_none", default)]
     exp_info: Option<String>,
     #[serde(
         serialize_with = "serialize_authority",
@@ -233,10 +233,8 @@ mod time_conv {
         (unix, t_str.split_off(T_LEN))
     }
 
-    const TZ_FORMAT: &'static [FormatItem<'static>] = format_description!(
-        version = 2,
-        "[first [[offset_hour]:[offset_minute]] [Z] [z]]"
-    );
+    const TZ_FORMAT: &'static [FormatItem<'static>] =
+        format_description!(version = 2, "[offset_hour]:[offset_minute]");
 
     pub fn make_ts(unix: u64, z: &str) -> Result<TimeStamp, Error> {
         let i = z.find(TZ_SEP).unwrap();
