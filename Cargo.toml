@@ -38,3 +38,6 @@ siwe-recap = { version = "0.2" }
 
 [dev-dependencies]
 async-std = { version = "1.10", features = ["attributes"] }
+base64 = "0.13"
+serde_ipld_dagcbor = "0.4"
+did-method-key = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10"  }
