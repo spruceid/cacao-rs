@@ -92,7 +92,7 @@ where
         let statement = siwe.statement.and_then(|s| {
             s.get(0..(s.len() - recap.as_ref().map(|r| r.to_statement().len()).unwrap_or(0)))
                 .and_then(|s| {
-                    if s.len() == 0 {
+                    if s.is_empty() {
                         None
                     } else {
                         Some(s.to_string())
@@ -233,7 +233,7 @@ mod time_conv {
         (unix, t_str.split_off(T_LEN))
     }
 
-    const TZ_FORMAT: &'static [FormatItem<'static>] =
+    const TZ_FORMAT: &[FormatItem<'static>] =
         format_description!(version = 2, "[offset_hour]:[offset_minute]");
 
     pub fn make_ts(unix: u64, z: &str) -> Result<TimeStamp, Error> {
@@ -246,7 +246,7 @@ mod time_conv {
             .to_offset(offset)
             .format(&Rfc3339)?;
         t_str.replace_range(T_LEN.., z);
-        Ok(t_str.parse()?)
+        t_str.parse()
     }
 
     #[cfg(test)]

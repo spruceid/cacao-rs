@@ -83,7 +83,7 @@ where
     type Error = Error<R::Error>;
 
     async fn verify(&self, cacao: &CommonCacao<F, NB>) -> Result<(), Self::Error> {
-        Ok(match RecapCacao::try_from(cacao.clone()) {
+        match RecapCacao::try_from(cacao.clone()) {
             Ok(recap) => self.verify(&recap).await?,
             Err(c) => match UcanCacao::try_from(c) {
                 Ok(ucan) => self.verify(&ucan).await.map_err(Error::Ucan)?,
@@ -91,7 +91,8 @@ where
                     return Err(Error::Mismatch);
                 }
             },
-        })
+        };
+        Ok(())
     }
 }
 
@@ -120,7 +121,7 @@ where
     type Error = R::Error;
 
     async fn verify(&self, cacao: &UcanCacao<F, NB>) -> Result<(), Self::Error> {
-        (&self.0).verify(cacao).await
+        self.0.verify(cacao).await
     }
 }
 
