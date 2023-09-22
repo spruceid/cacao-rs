@@ -6,10 +6,10 @@ use multidid::{DidPkhTypes, Method, MultiDid};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 pub use siwe;
-use siwe::{Message, TimeStamp};
+use siwe::Message;
 pub use siwe_recap::Capability;
 use std::{fmt::Debug, str::FromStr};
-use time::{format_description::well_known::Rfc3339, OffsetDateTime, UtcOffset};
+use time_conv::*;
 use varsig::{
     common::{Ethereum, EIP191_ENCODING},
     VarSig,
@@ -80,12 +80,12 @@ where
     type Error = Error;
     fn try_from((siwe, sig): (Message, [u8; 65])) -> Result<Self, Self::Error> {
         let recap = Capability::<NB>::extract_and_verify(&siwe)?;
-        let (issued_at, iat_info) = split_tz(siwe.issued_at);
-        let (not_before, nbf_info) = match siwe.not_before.map(split_tz) {
+        let (issued_at, iat_info) = split_tz(&siwe.issued_at);
+        let (not_before, nbf_info) = match siwe.not_before.as_ref().map(split_tz) {
             Some((nb, tz)) => (Some(nb), Some(tz)),
             None => (None, None),
         };
-        let (expiration, exp_info) = match siwe.expiration_time.map(split_tz) {
+        let (expiration, exp_info) = match siwe.expiration_time.as_ref().map(split_tz) {
             Some((exp, tz)) => (Some(exp), Some(tz)),
             None => (None, None),
         };
@@ -181,56 +181,6 @@ where
     }
 }
 
-fn split_tz(t: TimeStamp) -> (u64, String) {
-    let unix = t.as_ref().unix_timestamp();
-    let mut t_str = t.to_string();
-    (
-        // hmmm
-        unix as u64,
-        t_str
-            // if its fractional, split on '.
-            .find('.')
-            // if not, split on 'Z' or 'z'
-            .or_else(|| t_str.find('Z'))
-            .or_else(|| t_str.find('z'))
-            .map(|i| t_str.split_off(i))
-            // this default should never actually happen
-            // as long as TimeStamp serialises properly
-            .unwrap_or(t.as_ref().offset().to_string()),
-    )
-}
-
-fn make_ts(unix: u64, z: &str) -> Result<TimeStamp, time::error::Error> {
-    // we need to get the serialisation of the date and time
-    let odt = OffsetDateTime::from_unix_timestamp(unix as i64)?
-        // by setting the offset to the same one in z
-        .to_offset(UtcOffset::parse(
-            if z.starts_with('.') {
-                z.find('Z')
-                    .or_else(|| z.find('z'))
-                    .and_then(|i| z.get((i + 1)..))
-                    .unwrap_or(z)
-            } else {
-                z
-            },
-            &Rfc3339,
-        )?)
-        .to_string();
-
-    // then concat that serialisation with z to get the original timestamp
-    TimeStamp::from_str(
-        &[
-            odt.find('.')
-                .or_else(|| odt.find('Z'))
-                .or_else(|| odt.find('z'))
-                .and_then(|i| odt.get(..i))
-                .unwrap_or(&odt),
-            z,
-        ]
-        .concat(),
-    )
-}
-
 fn serialize_authority<S>(authority: &Authority, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
@@ -261,5 +211,65 @@ where
         let (message, signature) = <(Message, [u8; 65])>::try_from(cacao.clone())?;
         message.verify_eip191(&signature)?;
         Ok(())
+    }
+}
+
+mod time_conv {
+    use siwe::TimeStamp;
+    use time::{
+        error::Error,
+        format_description::{well_known::Rfc3339, FormatItem},
+        macros::{format_description, offset},
+        OffsetDateTime, UtcOffset,
+    };
+
+    const TZ_SEP: [char; 4] = ['Z', 'z', '+', '-'];
+    const T_LEN: usize = 19;
+
+    pub fn split_tz(t: &TimeStamp) -> (u64, String) {
+        let unix = t.as_ref().unix_timestamp() as u64;
+        let mut t_str = t.to_string();
+        // TimeStamp should always have a valid rfc3339 string, so split_off should never fail
+        (unix, t_str.split_off(T_LEN))
+    }
+
+    const TZ_FORMAT: &'static [FormatItem<'static>] = format_description!(
+        version = 2,
+        "[first [[offset_hour]:[offset_minute]] [Z] [z]]"
+    );
+
+    pub fn make_ts(unix: u64, z: &str) -> Result<TimeStamp, Error> {
+        let i = z.find(TZ_SEP).unwrap();
+        let offset = match &z[i..i + 1] {
+            "Z" | "z" => offset!(+00:00),
+            _ => UtcOffset::parse(&z[i..], TZ_FORMAT)?,
+        };
+        let mut t_str = OffsetDateTime::from_unix_timestamp(unix as i64)?
+            .to_offset(offset)
+            .format(&Rfc3339)?;
+        t_str.replace_range(T_LEN.., z);
+        Ok(t_str.parse()?)
+    }
+
+    #[cfg(test)]
+    mod test {
+        use super::*;
+
+        #[test]
+        fn timestamps() {
+            let cases = [
+                "2985-01-12T23:20:50.52Z",
+                "2985-02-12T23:20:50Z",
+                "2985-03-12T23:20:50.52+00:02",
+                "2985-05-12T23:20:50.52+10:20",
+                "2985-04-12T23:20:50+10:20",
+            ];
+            for case in cases.iter() {
+                let ts: TimeStamp = case.parse().unwrap();
+                let (unix, z) = split_tz(&ts);
+                let ts2 = make_ts(unix, &z).unwrap();
+                assert_eq!(ts, ts2);
+            }
+        }
     }
 }

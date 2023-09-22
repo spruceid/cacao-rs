@@ -98,15 +98,3 @@ impl<F, NB> From<UcanCacao<F, NB>> for Ucan<F, NB, Signature> {
         payload.sign(signature)
     }
 }
-
-#[cfg(test)]
-pub mod tests {
-    use super::*;
-
-    #[test]
-    fn tz() {
-        use time::OffsetDateTime;
-        let time = OffsetDateTime::now_local().unwrap();
-        println!("{}", time.offset());
-    }
-}

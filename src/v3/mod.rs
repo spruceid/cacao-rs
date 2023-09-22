@@ -113,8 +113,3 @@ pub trait CacaoVerifier<S, F, NB> {
 
     async fn verify(&self, cacao: &Cacao<S, F, NB>) -> Result<(), Self::Error>;
 }
-
-#[cfg(test)]
-pub mod tests {
-    use super::*;
-}

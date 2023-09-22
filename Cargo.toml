@@ -29,7 +29,7 @@ ssi-ucan = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.
 ssi-jwk = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10"  }
 ssi-jwt = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10"  }
 ssi-dids = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10"  }
-time = { version = "0.3", features = ["parsing", "formatting", "serde"] }
+time = { version = "0.3", features = ["parsing", "formatting", "serde", "macros"] }
 http = "0.2.5"
 hex = { version = "0.4", optional = true }
 varsig = { version = "0.1", path = "./varsig" }
