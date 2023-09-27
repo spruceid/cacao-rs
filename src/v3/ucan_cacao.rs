@@ -6,7 +6,9 @@ use serde_json::Value;
 use ssi_dids::did_resolve::DIDResolver;
 use ssi_ucan::{
     jose::{self, Signature, VerificationError},
-    jwt, Payload, Ucan,
+    jwt,
+    version::SemanticVersion,
+    Payload, Ucan,
 };
 use std::collections::BTreeMap;
 use std::str::FromStr;
@@ -17,7 +19,7 @@ use varsig::{
 
 pub type UcanSignature = JoseSig<DAG_JSON_ENCODING>;
 pub type UcanFacts<F> = BTreeMap<String, F>;
-pub type UcanCacao<F = Value, NB = Value> = Cacao<UcanSignature, UcanFacts<F>, NB>;
+pub type UcanCacao<F = Value, NB = Value> = Cacao<SemanticVersion, UcanSignature, UcanFacts<F>, NB>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -35,7 +37,7 @@ impl From<jwt::EncodeError> for Error {
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<NB, R, F> CacaoVerifier<UcanSignature, UcanFacts<F>, NB> for &R
+impl<NB, R, F> CacaoVerifier<SemanticVersion, UcanSignature, UcanFacts<F>, NB> for &R
 where
     R: DIDResolver,
     F: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
@@ -57,7 +59,7 @@ impl<F, NB> TryFrom<Ucan<F, NB, Signature>> for UcanCacao<F, NB> {
         Ok(Self {
             issuer: MultiDid::from_str(&payload.issuer)?,
             audience: MultiDid::from_str(&payload.audience)?,
-            version: "0.2.0".to_string(),
+            version: SemanticVersion,
             attenuations: payload.capabilities,
             nonce: payload.nonce,
             proof: payload.proof,

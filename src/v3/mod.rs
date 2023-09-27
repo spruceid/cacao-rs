@@ -15,13 +15,13 @@ use varsig::{VarSig, VarSigTrait};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, Hash)]
 #[serde(deny_unknown_fields)]
-pub struct Cacao<S, F, NB = Ipld> {
+pub struct Cacao<V, S, F, NB = Ipld> {
     #[serde(rename = "iss")]
     issuer: MultiDid,
     #[serde(rename = "aud")]
     audience: MultiDid,
     #[serde(rename = "v")]
-    version: String,
+    version: V,
     #[serde(rename = "att")]
     attenuations: Capabilities<NB>,
     #[serde(rename = "nnc", skip_serializing_if = "Option::is_none", default)]
@@ -44,7 +44,7 @@ pub struct Cacao<S, F, NB = Ipld> {
     signature: VarSig<S>,
 }
 
-impl<S, F, NB> Cacao<S, F, NB> {
+impl<V, S, F, NB> Cacao<V, S, F, NB> {
     pub fn issuer(&self) -> &MultiDid {
         &self.issuer
     }
@@ -97,9 +97,9 @@ impl<S, F, NB> Cacao<S, F, NB> {
             })
     }
 
-    pub async fn verify<V>(&self, verifier: &V) -> Result<(), V::Error>
+    pub async fn verify<VE>(&self, verifier: &VE) -> Result<(), VE::Error>
     where
-        V: CacaoVerifier<S, F, NB>,
+        VE: CacaoVerifier<V, S, F, NB>,
         NB: Send + Sync,
     {
         verifier.verify(self).await
@@ -108,8 +108,8 @@ impl<S, F, NB> Cacao<S, F, NB> {
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait CacaoVerifier<S, F, NB> {
+pub trait CacaoVerifier<V, S, F, NB> {
     type Error: std::error::Error;
 
-    async fn verify(&self, cacao: &Cacao<S, F, NB>) -> Result<(), Self::Error>;
+    async fn verify(&self, cacao: &Cacao<V, S, F, NB>) -> Result<(), Self::Error>;
 }

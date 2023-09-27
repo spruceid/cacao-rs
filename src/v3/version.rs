@@ -1,25 +1,21 @@
-use serde_with::{DeserializeFromStr, SerializeDisplay};
-use thiserror::Error;
+use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, SerializeDisplay, DeserializeFromStr)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Default)]
 pub struct Version3;
 
-impl std::fmt::Display for Version3 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "3")
+impl Serialize for SiweVersion {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str("3")
     }
 }
 
-#[derive(Error, Debug, Copy, PartialEq)]
-pub struct VersionErr;
-
-impl std::str::FromStr for Version3 {
-    type Err = VersionErr;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+impl<'de> Deserialize<'de> for SiweVersion {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
         if s == "3" {
-            Ok(Self)
+            Ok(Self::V1)
         } else {
-            Err(VersionErr)
+            Err(serde::de::Error::custom("invalid version"))
         }
     }
 }

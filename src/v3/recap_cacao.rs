@@ -14,9 +14,10 @@ use varsig::{
     common::{Ethereum, EIP191_ENCODING},
     VarSig,
 };
+use version::SiweVersion;
 
 pub type RecapSignature = Ethereum<EIP191_ENCODING>;
-pub type RecapCacao<NB = Value> = Cacao<RecapSignature, RecapFacts, NB>;
+pub type RecapCacao<NB = Value> = Cacao<SiweVersion, RecapSignature, RecapFacts, NB>;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Hash)]
 #[serde(deny_unknown_fields)]
@@ -57,8 +58,6 @@ pub enum Error {
     ExtraDidComponents,
     #[error("The 'facts' field is required for Recap Cacaos")]
     MissingFacts,
-    #[error("Incorrect Version, expected '1', found: {0}")]
-    IncorrectVersion(String),
     #[error("SIWE messages must have a nonce")]
     MissingNonce,
     #[error("SIWE messages must have a issuance timestamp")]
@@ -111,7 +110,9 @@ where
                 None,
             ),
             audience: MultiDid::from_str(siwe.uri.as_str())?,
-            version: (siwe.version as u8).to_string(),
+            version: match siwe.version {
+                siwe::Version::V1 => SiweVersion::V1,
+            },
             attenuations,
             nonce: Some(siwe.nonce),
             proof: Some(proof),
@@ -156,10 +157,9 @@ where
                 address,
                 statement: facts.statement,
                 uri: cacao.audience.to_string().parse()?,
-                version: cacao
-                    .version
-                    .parse()
-                    .map_err(|_| Error::IncorrectVersion(cacao.version))?,
+                version: match cacao.version {
+                    SiweVersion::V1 => siwe::Version::V1,
+                },
                 chain_id,
                 nonce: cacao.nonce.ok_or(Error::MissingNonce)?,
                 issued_at: make_ts(cacao.issued_at.ok_or(Error::MissingIat)?, &facts.iat_info)?,
@@ -201,7 +201,7 @@ pub struct RecapVerify(());
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<NB> CacaoVerifier<RecapSignature, RecapFacts, NB> for RecapVerify
+impl<NB> CacaoVerifier<SiweVersion, RecapSignature, RecapFacts, NB> for RecapVerify
 where
     NB: Send + Sync + Serialize + Clone,
 {
@@ -211,6 +211,33 @@ where
         let (message, signature) = <(Message, [u8; 65])>::try_from(cacao.clone())?;
         message.verify_eip191(&signature)?;
         Ok(())
+    }
+}
+
+pub mod version {
+    use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
+
+    #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Default)]
+    pub enum SiweVersion {
+        #[default]
+        V1 = 1,
+    }
+
+    impl Serialize for SiweVersion {
+        fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            serializer.serialize_str("1")
+        }
+    }
+
+    impl<'de> Deserialize<'de> for SiweVersion {
+        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            let s = String::deserialize(deserializer)?;
+            if s == "1" {
+                Ok(Self::V1)
+            } else {
+                Err(serde::de::Error::custom("invalid version"))
+            }
+        }
     }
 }
 
