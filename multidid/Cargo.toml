@@ -1,0 +1,24 @@
+[package]
+name = "multidid"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["serde"]
+serde = ["dep:serde"]
+
+[dependencies]
+iri-string = { version = "0.6", features = ["serde"] }
+unsigned-varint = { version = "0.7", features = ["std"] }
+thiserror = "1"
+bs58 = "0.5"
+serde = { version = "1", optional = true }
+bech32 = "0.9"
+sha3 = "0.10.8"
+hex = "0.4"
+
+[dev-dependencies]
+serde_json = "1"
+serde = "1"
+serde_with = { version = "2", features = ["hex"] }
