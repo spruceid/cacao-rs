@@ -1,4 +1,4 @@
-use super::{Cacao, CacaoVerifier};
+use super::{payload::Payload, Cacao, CacaoVerifier};
 use async_trait::async_trait;
 use http::uri::Authority;
 use iri_string::types::UriString;
@@ -211,6 +211,30 @@ where
         let (message, signature) = <(Message, [u8; 65])>::try_from(cacao.clone())?;
         message.verify_eip191(&signature)?;
         Ok(())
+    }
+}
+
+impl<NB> RecapCacao<NB> {
+    pub fn builder(iss: MultiDid, aud: MultiDid) -> Payload<SiweVersion, RecapFacts, NB> {
+        Payload::new(iss, aud, SiweVersion::V1)
+    }
+}
+
+impl<NB> Payload<SiweVersion, RecapFacts, NB> {
+    pub fn sign(self, sig: RecapSignature) -> RecapCacao<NB> {
+        Cacao {
+            issuer: self.issuer,
+            audience: self.audience,
+            version: SiweVersion::V1,
+            attenuations: self.attenuations,
+            nonce: self.nonce,
+            proof: self.proof,
+            issued_at: self.issued_at,
+            not_before: self.not_before,
+            expiration: self.expiration,
+            facts: self.facts,
+            signature: VarSig::new(sig),
+        }
     }
 }
 

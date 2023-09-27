@@ -1,14 +1,13 @@
 use super::Cacao;
-use libipld::{cid::Cid, Ipld};
+use libipld::cid::Cid;
 use multidid::MultiDid;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use ucan_capabilities_object::Capabilities;
-use varsig::VarSig;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, Hash)]
 #[serde(deny_unknown_fields)]
-pub struct Payload<V, F, NB = Ipld> {
+pub struct Payload<V, F, NB> {
     #[serde(rename = "iss")]
     pub issuer: MultiDid,
     #[serde(rename = "aud")]
@@ -36,6 +35,21 @@ pub struct Payload<V, F, NB = Ipld> {
 }
 
 impl<V, F, NB> Payload<V, F, NB> {
+    pub(crate) fn new(issuer: MultiDid, audience: MultiDid, version: V) -> Self {
+        Self {
+            issuer,
+            audience,
+            version,
+            attenuations: Capabilities::default(),
+            nonce: None,
+            proof: None,
+            issued_at: None,
+            not_before: None,
+            expiration: None,
+            facts: None,
+        }
+    }
+
     pub fn capabilities(&mut self) -> &mut Capabilities<NB> {
         &mut self.attenuations
     }
@@ -68,22 +82,6 @@ impl<V, F, NB> Payload<V, F, NB> {
     pub fn facts(&mut self, facts: F) -> &mut Self {
         self.facts = Some(facts);
         self
-    }
-
-    pub fn sign<S>(self, sig: S) -> Cacao<V, S, F, NB> {
-        Cacao {
-            issuer: self.issuer,
-            audience: self.audience,
-            version: self.version,
-            attenuations: self.attenuations,
-            nonce: self.nonce,
-            proof: self.proof,
-            issued_at: self.issued_at,
-            not_before: self.not_before,
-            expiration: self.expiration,
-            facts: self.facts,
-            signature: VarSig::new(sig),
-        }
     }
 }
 

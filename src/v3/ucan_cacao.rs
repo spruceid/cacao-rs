@@ -1,4 +1,4 @@
-use super::{Cacao, CacaoVerifier};
+use super::{payload::Payload, Cacao, CacaoVerifier};
 use async_trait::async_trait;
 use multidid::MultiDid;
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,7 @@ use ssi_ucan::{
     jose::{self, Signature, VerificationError},
     jwt,
     version::SemanticVersion,
-    Payload, Ucan,
+    Payload as UcanPayload, Ucan,
 };
 use std::collections::BTreeMap;
 use std::str::FromStr;
@@ -89,7 +89,7 @@ impl<F, NB> From<UcanCacao<F, NB>> for Ucan<F, NB, Signature> {
             JoseSig::Rsa256(s) => Signature::RS256(s.into_inner()),
             JoseSig::Rsa512(s) => Signature::RS512(s.into_inner()),
         };
-        let mut payload = Payload::new(cacao.issuer.to_string(), cacao.audience.to_string());
+        let mut payload = UcanPayload::new(cacao.issuer.to_string(), cacao.audience.to_string());
         payload.capabilities = cacao.attenuations;
         payload.nonce = cacao.nonce;
         payload.proof = cacao.proof;
@@ -98,5 +98,29 @@ impl<F, NB> From<UcanCacao<F, NB>> for Ucan<F, NB, Signature> {
         payload.expiration = cacao.expiration;
         payload.facts = cacao.facts;
         payload.sign(signature)
+    }
+}
+
+impl<F, NB> UcanCacao<F, NB> {
+    pub fn builder(iss: MultiDid, aud: MultiDid) -> Payload<SemanticVersion, F, NB> {
+        Payload::new(iss, aud, SemanticVersion)
+    }
+}
+
+impl<F, NB> Payload<SemanticVersion, UcanFacts<F>, NB> {
+    pub fn sign(self, sig: UcanSignature) -> UcanCacao<F, NB> {
+        Cacao {
+            issuer: self.issuer,
+            audience: self.audience,
+            version: SemanticVersion,
+            attenuations: self.attenuations,
+            nonce: self.nonce,
+            proof: self.proof,
+            issued_at: self.issued_at,
+            not_before: self.not_before,
+            expiration: self.expiration,
+            facts: self.facts,
+            signature: VarSig::new(sig),
+        }
     }
 }
