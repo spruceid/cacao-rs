@@ -1,5 +1,9 @@
 use crate::{DeserError, SerError, VarSigTrait};
-pub use passkey_types::{ctap2::AuthenticatorData, webauthn::CollectedClientData};
+pub use passkey_types::{
+    ctap2::AuthenticatorData,
+    encoding::{base64url, try_from_base64url},
+    webauthn::CollectedClientData,
+};
 use std::io::{Read, Write};
 use unsigned_varint::{
     encode::{u64 as write_u64, u64_buffer},
