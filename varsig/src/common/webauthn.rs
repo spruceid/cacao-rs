@@ -173,7 +173,7 @@ impl<const E: u64> VarSigTrait for PasskeySig<E> {
     {
         let encoding = read_u64(&mut reader)?;
         if encoding != E {
-            return Err(DeserError::Format(EncodingErr::Encoding(encoding).into()));
+            return Err(DeserError::Format(EncodingErr::Encoding(encoding)));
         }
 
         let assertion = AssertionSigData::from_reader(&mut reader).map_err(|e| match e {
