@@ -84,12 +84,14 @@ where
         verify_bytes(
             key.algorithm.ok_or(ssi_jws::Error::MissingCurve)?,
             &[
-                cacao.signature.sig().as_ref().client_data(),
+                Code::Sha2_256
+                    .digest(cacao.signature.sig().as_ref().client_data())
+                    .digest(),
                 cacao.signature.sig().as_ref().authenticator_data(),
             ]
             .concat(),
             &key,
-            &cacao.signature.sig().as_ref().signature(),
+            cacao.signature.sig().as_ref().signature(),
         )?;
 
         Ok(())
@@ -117,5 +119,20 @@ impl<F, NB> Payload<Version3, F, NB> {
             facts: self.facts,
             signature: VarSig::new(sig),
         }
+    }
+
+    pub fn get_cid(&self, hash: Option<Code>) -> Result<Cid, EncodeError<TryReserveError>>
+    where
+        F: Serialize,
+        NB: Serialize,
+    {
+        Ok(Cid::new_v1(
+            DAG_CBOR_ENCODING,
+            match hash {
+                Some(c) => c,
+                None => Code::Sha2_256,
+            }
+            .digest(&serde_ipld_dagcbor::to_vec(&BorrowedPayload::from(self))?),
+        ))
     }
 }
