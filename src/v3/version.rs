@@ -13,7 +13,7 @@ impl<'de> Deserialize<'de> for Version3 {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
         if s == "3" {
-            Ok(Self::V1)
+            Ok(Self)
         } else {
             Err(serde::de::Error::custom("invalid version"))
         }
