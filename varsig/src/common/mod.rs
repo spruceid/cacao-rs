@@ -73,6 +73,19 @@ pub enum JoseSig<const E: u64> {
     Es256K(Es256K<E>),
 }
 
+impl<const E: u64> JoseSig<E> {
+    pub fn bytes(&self) -> &[u8] {
+        match self {
+            JoseSig::Es256(sig) => sig.bytes(),
+            JoseSig::Es512(sig) => sig.bytes(),
+            JoseSig::Rsa256(sig) => sig.bytes(),
+            JoseSig::Rsa512(sig) => sig.bytes(),
+            JoseSig::EdDSA(sig) => sig.bytes(),
+            JoseSig::Es256K(sig) => sig.bytes(),
+        }
+    }
+}
+
 impl<const E: u64> VarSigTrait for JoseSig<E> {
     type SerError = std::convert::Infallible;
     type DeserError = JoseError<E>;
