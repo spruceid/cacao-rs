@@ -1,8 +1,4 @@
-use super::{
-    payload::{BorrowedPayload, Payload},
-    version::Version3,
-    Cacao, CacaoVerifier,
-};
+use super::{payload::Payload, version::Version3, Cacao, CacaoVerifier};
 use async_trait::async_trait;
 use libipld::cid::{
     multihash::{Code, MultihashDigest},
@@ -16,6 +12,7 @@ use ssi_dids::did_resolve::DIDResolver;
 use ssi_jws::verify_bytes;
 use ssi_ucan::util::get_verification_key;
 use std::collections::TryReserveError;
+use ucan_capabilities_object::Capabilities;
 use varsig::common::{
     webauthn::{try_from_base64url, Error as WebAuthnError},
     PasskeySig, DAG_CBOR_ENCODING,
@@ -64,16 +61,12 @@ where
         let challenge = try_from_base64url(&client_data.challenge)
             .map(|v| Cid::read_bytes(v.as_slice()))
             .ok_or(CidError::ParsingError)??;
-        // get original signed payload
-        let payload = serde_ipld_dagcbor::to_vec(&BorrowedPayload::from(cacao))?;
         // verify Cid matches payload
         if challenge
-            != Cid::new_v1(
-                DAG_CBOR_ENCODING,
+            != SigningPayload::from(cacao).get_cid(Some(
                 Code::try_from(challenge.hash().code())
-                    .map_err(|_| Error::InvalidMultihash(challenge.hash().code()))?
-                    .digest(&payload),
-            )
+                    .map_err(|_| Error::InvalidMultihash(challenge.hash().code()))?,
+            ))?
         {
             return Err(Error::ChallengeMismatch);
         }
@@ -105,7 +98,7 @@ impl<F, NB> WebauthnCacao<F, NB> {
 }
 
 impl<F, NB> Payload<Version3, F, NB> {
-    pub fn sign(self, sig: WebauthnSignature) -> WebauthnCacao<F, NB> {
+    pub fn sign_webauthn(self, sig: WebauthnSignature) -> WebauthnCacao<F, NB> {
         Cacao {
             issuer: self.issuer,
             audience: self.audience,
@@ -121,6 +114,45 @@ impl<F, NB> Payload<Version3, F, NB> {
         }
     }
 
+    pub fn get_webauthn_challenge_cid(
+        &self,
+        hash: Option<Code>,
+    ) -> Result<Cid, EncodeError<TryReserveError>>
+    where
+        F: Serialize,
+        NB: Serialize,
+    {
+        SigningPayload::from(self).get_cid(hash)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Eq, Hash)]
+struct SigningPayload<'a, F, NB> {
+    #[serde(rename = "aud")]
+    audience: &'a MultiDid,
+    #[serde(rename = "v")]
+    version: Version3,
+    #[serde(rename = "att")]
+    attenuations: &'a Capabilities<NB>,
+    #[serde(rename = "nnc", skip_serializing_if = "Option::is_none", default)]
+    nonce: &'a Option<String>,
+    #[serde(rename = "prf", skip_serializing_if = "Option::is_none", default)]
+    proof: &'a Option<Vec<Cid>>,
+    #[serde(rename = "iat", skip_serializing_if = "Option::is_none", default)]
+    issued_at: &'a Option<u64>,
+    #[serde(rename = "nbf", skip_serializing_if = "Option::is_none", default)]
+    not_before: &'a Option<u64>,
+    #[serde(rename = "exp", skip_serializing_if = "Option::is_none", default)]
+    expiration: &'a Option<u64>,
+    #[serde(
+        rename = "fct",
+        skip_serializing_if = "Option::is_none",
+        default = "Option::default"
+    )]
+    facts: &'a Option<F>,
+}
+
+impl<'a, F, NB> SigningPayload<'a, F, NB> {
     pub fn get_cid(&self, hash: Option<Code>) -> Result<Cid, EncodeError<TryReserveError>>
     where
         F: Serialize,
@@ -132,7 +164,39 @@ impl<F, NB> Payload<Version3, F, NB> {
                 Some(c) => c,
                 None => Code::Sha2_256,
             }
-            .digest(&serde_ipld_dagcbor::to_vec(&BorrowedPayload::from(self))?),
+            .digest(&serde_ipld_dagcbor::to_vec(&self)?),
         ))
+    }
+}
+
+impl<'a, F, NB> From<&'a WebauthnCacao<F, NB>> for SigningPayload<'a, F, NB> {
+    fn from(cacao: &'a WebauthnCacao<F, NB>) -> Self {
+        Self {
+            audience: &cacao.audience,
+            version: Version3,
+            attenuations: &cacao.attenuations,
+            nonce: &cacao.nonce,
+            proof: &cacao.proof,
+            issued_at: &cacao.issued_at,
+            not_before: &cacao.not_before,
+            expiration: &cacao.expiration,
+            facts: &cacao.facts,
+        }
+    }
+}
+
+impl<'a, F, NB> From<&'a Payload<Version3, F, NB>> for SigningPayload<'a, F, NB> {
+    fn from(payload: &'a Payload<Version3, F, NB>) -> Self {
+        Self {
+            audience: &payload.audience,
+            version: Version3,
+            attenuations: &payload.attenuations,
+            nonce: &payload.nonce,
+            proof: &payload.proof,
+            issued_at: &payload.issued_at,
+            not_before: &payload.not_before,
+            expiration: &payload.expiration,
+            facts: &payload.facts,
+        }
     }
 }
