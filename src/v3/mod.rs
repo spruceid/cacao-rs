@@ -8,7 +8,6 @@ pub mod common;
 pub mod payload;
 pub mod recap_cacao;
 pub mod ucan_cacao;
-pub(crate) mod version;
 pub mod webauthn;
 
 pub use multidid;

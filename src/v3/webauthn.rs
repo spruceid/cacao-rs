@@ -1,11 +1,11 @@
-use super::{payload::Payload, version::Version3, Cacao, CacaoVerifier};
+use super::{Cacao, CacaoVerifier};
 use async_trait::async_trait;
 use libipld::cid::{
     multihash::{Code, Multihash, MultihashDigest},
     Cid,
 };
 use multidid::MultiDid;
-use serde::{Deserialize, Serialize};
+use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
 use serde_ipld_dagcbor::EncodeError;
 use serde_json::Value;
 use ssi_dids::did_resolve::DIDResolver;
@@ -20,7 +20,7 @@ use varsig::common::{
 use varsig::VarSig;
 
 pub type WebauthnSignature = PasskeySig<DAG_CBOR_ENCODING>;
-pub type WebauthnCacao<F = Value, NB = Value> = Cacao<Version3, WebauthnSignature, F, NB>;
+pub type WebauthnCacao<F = Value, NB = Value> = Cacao<WebauthnVersion, WebauthnSignature, F, NB>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -44,7 +44,7 @@ pub enum Error {
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<NB, R, F> CacaoVerifier<Version3, WebauthnSignature, F, NB> for &R
+impl<NB, R, F> CacaoVerifier<WebauthnVersion, WebauthnSignature, F, NB> for &R
 where
     R: DIDResolver,
     F: Send + Sync + for<'a> Deserialize<'a> + Serialize,
@@ -59,11 +59,11 @@ where
             .sig()
             .parse_client_data()
             .map_err(|e| Error::WebauthnSig(e.into()))?;
-        // get Cid from client data
+        // get hash from client data
         let challenge = get_challenge_hash(&client_data)?;
-        // verify Cid matches payload
+        // verify hash matches payload
         if challenge
-            != SigningPayload::from(cacao).get_hash(Some(
+            != BorrowedPayload::from(cacao).get_webauthn_challenge_hash(Some(
                 Code::try_from(challenge.code())
                     .map_err(|_| Error::InvalidMultihash(challenge.code()))?,
             ))?
@@ -92,17 +92,92 @@ where
 }
 
 impl<F, NB> WebauthnCacao<F, NB> {
-    pub fn builder(issuer: MultiDid, audience: MultiDid) -> Payload<Version3, F, NB> {
-        Payload::new(issuer, audience, Version3)
+    pub fn builder(audience: MultiDid) -> Payload<F, NB> {
+        Payload::new(audience)
     }
 }
 
-impl<F, NB> Payload<Version3, F, NB> {
-    pub fn sign_webauthn(self, sig: WebauthnSignature) -> WebauthnCacao<F, NB> {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, Hash)]
+#[serde(deny_unknown_fields)]
+pub struct Payload<F, NB> {
+    #[serde(rename = "aud")]
+    audience: MultiDid,
+    #[serde(rename = "v")]
+    version: WebauthnVersion,
+    #[serde(rename = "att")]
+    attenuations: Capabilities<NB>,
+    #[serde(rename = "nnc", skip_serializing_if = "Option::is_none", default)]
+    nonce: Option<String>,
+    #[serde(rename = "prf", skip_serializing_if = "Option::is_none", default)]
+    proof: Option<Vec<Cid>>,
+    #[serde(rename = "iat", skip_serializing_if = "Option::is_none", default)]
+    issued_at: Option<u64>,
+    #[serde(rename = "nbf", skip_serializing_if = "Option::is_none", default)]
+    not_before: Option<u64>,
+    #[serde(rename = "exp", skip_serializing_if = "Option::is_none", default)]
+    expiration: Option<u64>,
+    #[serde(
+        rename = "fct",
+        skip_serializing_if = "Option::is_none",
+        default = "Option::default"
+    )]
+    facts: Option<F>,
+}
+
+impl<F, NB> Payload<F, NB> {
+    fn new(audience: MultiDid) -> Self {
+        Self {
+            audience,
+            version: WebauthnVersion,
+            attenuations: Capabilities::default(),
+            nonce: None,
+            proof: None,
+            issued_at: None,
+            not_before: None,
+            expiration: None,
+            facts: None,
+        }
+    }
+
+    pub fn capabilities(&mut self) -> &mut Capabilities<NB> {
+        &mut self.attenuations
+    }
+
+    pub fn nonce(&mut self, nonce: String) -> &mut Self {
+        self.nonce = Some(nonce);
+        self
+    }
+
+    pub fn proof(&mut self, proof: Vec<Cid>) -> &mut Self {
+        self.proof = Some(proof);
+        self
+    }
+
+    pub fn issued_at(&mut self, iat: u64) -> &mut Self {
+        self.issued_at = Some(iat);
+        self
+    }
+
+    pub fn not_before(&mut self, nbf: u64) -> &mut Self {
+        self.not_before = Some(nbf);
+        self
+    }
+
+    pub fn expiration(&mut self, exp: u64) -> &mut Self {
+        self.expiration = Some(exp);
+        self
+    }
+
+    pub fn facts(&mut self, facts: F) -> &mut Self {
+        self.facts = Some(facts);
+        self
+    }
+
+    pub fn sign_webauthn(self, issuer: MultiDid, sig: WebauthnSignature) -> WebauthnCacao<F, NB> {
         Cacao {
-            issuer: self.issuer,
+            issuer,
             audience: self.audience,
-            version: Version3,
+            version: WebauthnVersion,
             attenuations: self.attenuations,
             nonce: self.nonce,
             proof: self.proof,
@@ -122,16 +197,16 @@ impl<F, NB> Payload<Version3, F, NB> {
         F: Serialize,
         NB: Serialize,
     {
-        SigningPayload::from(self).get_hash(hash)
+        BorrowedPayload::from(self).get_webauthn_challenge_hash(hash)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Eq, Hash)]
-struct SigningPayload<'a, F, NB> {
+pub(crate) struct BorrowedPayload<'a, F, NB> {
     #[serde(rename = "aud")]
     audience: &'a MultiDid,
     #[serde(rename = "v")]
-    version: Version3,
+    version: WebauthnVersion,
     #[serde(rename = "att")]
     attenuations: &'a Capabilities<NB>,
     #[serde(rename = "nnc", skip_serializing_if = "Option::is_none", default)]
@@ -152,8 +227,11 @@ struct SigningPayload<'a, F, NB> {
     facts: &'a Option<F>,
 }
 
-impl<'a, F, NB> SigningPayload<'a, F, NB> {
-    pub fn get_hash(&self, hash: Option<Code>) -> Result<Multihash, EncodeError<TryReserveError>>
+impl<'a, F, NB> BorrowedPayload<'a, F, NB> {
+    pub fn get_webauthn_challenge_hash(
+        &self,
+        hash: Option<Code>,
+    ) -> Result<Multihash, EncodeError<TryReserveError>>
     where
         F: Serialize,
         NB: Serialize,
@@ -166,11 +244,11 @@ impl<'a, F, NB> SigningPayload<'a, F, NB> {
     }
 }
 
-impl<'a, F, NB> From<&'a WebauthnCacao<F, NB>> for SigningPayload<'a, F, NB> {
+impl<'a, F, NB> From<&'a WebauthnCacao<F, NB>> for BorrowedPayload<'a, F, NB> {
     fn from(cacao: &'a WebauthnCacao<F, NB>) -> Self {
         Self {
             audience: &cacao.audience,
-            version: Version3,
+            version: WebauthnVersion,
             attenuations: &cacao.attenuations,
             nonce: &cacao.nonce,
             proof: &cacao.proof,
@@ -182,11 +260,11 @@ impl<'a, F, NB> From<&'a WebauthnCacao<F, NB>> for SigningPayload<'a, F, NB> {
     }
 }
 
-impl<'a, F, NB> From<&'a Payload<Version3, F, NB>> for SigningPayload<'a, F, NB> {
-    fn from(payload: &'a Payload<Version3, F, NB>) -> Self {
+impl<'a, F, NB> From<&'a Payload<F, NB>> for BorrowedPayload<'a, F, NB> {
+    fn from(payload: &'a Payload<F, NB>) -> Self {
         Self {
             audience: &payload.audience,
-            version: Version3,
+            version: WebauthnVersion,
             attenuations: &payload.attenuations,
             nonce: &payload.nonce,
             proof: &payload.proof,
@@ -194,6 +272,25 @@ impl<'a, F, NB> From<&'a Payload<Version3, F, NB>> for SigningPayload<'a, F, NB>
             not_before: &payload.not_before,
             expiration: &payload.expiration,
             facts: &payload.facts,
+        }
+    }
+}
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Default)]
+pub struct WebauthnVersion;
+
+impl Serialize for WebauthnVersion {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str("wan3")
+    }
+}
+
+impl<'de> Deserialize<'de> for WebauthnVersion {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        if s == "wan3" {
+            Ok(Self)
+        } else {
+            Err(serde::de::Error::custom("invalid version"))
         }
     }
 }
