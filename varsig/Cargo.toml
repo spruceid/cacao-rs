@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
 default = ["serde", "webauthn"]
-webauthn = ["serde", "dep:passkey-types", "dep:serde_json", "dep:coset"]
+webauthn = ["serde", "dep:passkey-types", "dep:serde_json", "dep:coset", "dep:multihash"]
 serde = ["dep:serde"]
 
 [dependencies]
@@ -16,3 +16,4 @@ serde = { version = "1", optional = true }
 passkey-types = { version = "0.1", optional = true }
 serde_json = { version = "1", optional = true }
 coset = { version = "0.3", optional = true }
+multihash = { version = "0.18", optional = true }

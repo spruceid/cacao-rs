@@ -1,16 +1,28 @@
 use super::{JoseError, JoseSig};
+use multihash::{Error as MhError, Multihash};
+pub use passkey_types::{
+    ctap2::AuthenticatorData,
+    encoding::{base64url, try_from_base64url},
+    webauthn::CollectedClientData,
+};
+use std::io::{Error as IoError, ErrorKind};
 
 pub const WEBAUTHN: u16 = 0x6672;
 pub type PasskeySig<const E: u64> = generic::PasskeySig<JoseSig<E>>;
 pub type Error<const E: u64> = generic::Error<JoseError<E>>;
 
+pub fn get_challenge_hash(client_data: &CollectedClientData) -> Result<Multihash, MhError> {
+    Multihash::from_bytes(&try_from_base64url(&client_data.challenge).ok_or_else(|| {
+        MhError::Io(IoError::new(
+            ErrorKind::InvalidData,
+            "Invalid base64url string",
+        ))
+    })?)
+}
+
 pub mod generic {
+    use super::{AuthenticatorData, CollectedClientData};
     use crate::{DeserError, SerError, VarSigTrait};
-    pub use passkey_types::{
-        ctap2::AuthenticatorData,
-        encoding::{base64url, try_from_base64url},
-        webauthn::CollectedClientData,
-    };
     use std::io::{Read, Write};
     use unsigned_varint::{
         encode::{u64 as write_u64, u64_buffer},
