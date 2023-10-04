@@ -1,8 +1,8 @@
 use super::{payload::Payload, version::Version3, Cacao, CacaoVerifier};
 use async_trait::async_trait;
 use libipld::cid::{
-    multihash::{Code, MultihashDigest},
-    Cid, Error as CidError,
+    multihash::{Code, Multihash, MultihashDigest},
+    Cid,
 };
 use multidid::MultiDid;
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ use ssi_ucan::util::get_verification_key;
 use std::collections::TryReserveError;
 use ucan_capabilities_object::Capabilities;
 use varsig::common::{
-    webauthn::{try_from_base64url, Error as WebAuthnError},
+    webauthn::{get_challenge_hash, Error as WebAuthnError},
     PasskeySig, DAG_CBOR_ENCODING,
 };
 use varsig::VarSig;
@@ -33,11 +33,9 @@ pub enum Error {
     #[error(transparent)]
     Encode(#[from] EncodeError<TryReserveError>),
     #[error(transparent)]
-    ClientDataParse(#[from] serde_json::Error),
+    WebauthnSig(#[from] WebAuthnError<DAG_CBOR_ENCODING>),
     #[error(transparent)]
-    AuthenticatorDataParse(#[from] WebAuthnError),
-    #[error(transparent)]
-    InvalidCid(#[from] CidError),
+    Multihash(#[from] libipld::cid::multihash::Error),
     #[error("Client Data Challenge does not match Payload")]
     ChallengeMismatch,
     #[error("Invalid Multihash Code: {0}")]
@@ -46,7 +44,7 @@ pub enum Error {
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<NB, R, F> CacaoVerifier<Version3, PasskeySig<DAG_CBOR_ENCODING>, F, NB> for &R
+impl<NB, R, F> CacaoVerifier<Version3, WebauthnSignature, F, NB> for &R
 where
     R: DIDResolver,
     F: Send + Sync + for<'a> Deserialize<'a> + Serialize,
@@ -56,16 +54,18 @@ where
 
     async fn verify(&self, cacao: &WebauthnCacao<F, NB>) -> Result<(), Error> {
         // extract webauthn client data from signature
-        let client_data = cacao.signature.sig().as_ref().parse_client_data()?;
+        let client_data = cacao
+            .signature
+            .sig()
+            .parse_client_data()
+            .map_err(|e| Error::WebauthnSig(e.into()))?;
         // get Cid from client data
-        let challenge = try_from_base64url(&client_data.challenge)
-            .map(|v| Cid::read_bytes(v.as_slice()))
-            .ok_or(CidError::ParsingError)??;
+        let challenge = get_challenge_hash(&client_data)?;
         // verify Cid matches payload
         if challenge
-            != SigningPayload::from(cacao).get_cid(Some(
-                Code::try_from(challenge.hash().code())
-                    .map_err(|_| Error::InvalidMultihash(challenge.hash().code()))?,
+            != SigningPayload::from(cacao).get_hash(Some(
+                Code::try_from(challenge.code())
+                    .map_err(|_| Error::InvalidMultihash(challenge.code()))?,
             ))?
         {
             return Err(Error::ChallengeMismatch);
@@ -78,13 +78,13 @@ where
             key.algorithm.ok_or(ssi_jws::Error::MissingCurve)?,
             &[
                 Code::Sha2_256
-                    .digest(cacao.signature.sig().as_ref().client_data())
+                    .digest(cacao.signature.sig().client_data())
                     .digest(),
-                cacao.signature.sig().as_ref().authenticator_data(),
+                cacao.signature.sig().authenticator_data(),
             ]
             .concat(),
             &key,
-            cacao.signature.sig().as_ref().signature(),
+            cacao.signature.sig().signature().bytes(),
         )?;
 
         Ok(())
@@ -114,15 +114,15 @@ impl<F, NB> Payload<Version3, F, NB> {
         }
     }
 
-    pub fn get_webauthn_challenge_cid(
+    pub fn get_webauthn_challenge_hash(
         &self,
         hash: Option<Code>,
-    ) -> Result<Cid, EncodeError<TryReserveError>>
+    ) -> Result<Multihash, EncodeError<TryReserveError>>
     where
         F: Serialize,
         NB: Serialize,
     {
-        SigningPayload::from(self).get_cid(hash)
+        SigningPayload::from(self).get_hash(hash)
     }
 }
 
@@ -153,19 +153,16 @@ struct SigningPayload<'a, F, NB> {
 }
 
 impl<'a, F, NB> SigningPayload<'a, F, NB> {
-    pub fn get_cid(&self, hash: Option<Code>) -> Result<Cid, EncodeError<TryReserveError>>
+    pub fn get_hash(&self, hash: Option<Code>) -> Result<Multihash, EncodeError<TryReserveError>>
     where
         F: Serialize,
         NB: Serialize,
     {
-        Ok(Cid::new_v1(
-            DAG_CBOR_ENCODING,
-            match hash {
-                Some(c) => c,
-                None => Code::Sha2_256,
-            }
-            .digest(&serde_ipld_dagcbor::to_vec(&self)?),
-        ))
+        Ok(match hash {
+            Some(c) => c,
+            None => Code::Sha2_256,
+        }
+        .digest(&serde_ipld_dagcbor::to_vec(&self)?))
     }
 }
 
