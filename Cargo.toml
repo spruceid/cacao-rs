@@ -11,11 +11,6 @@ repository = "https://github.com/spruceid/cacao-rs/"
 members = ["varsig", "multidid"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[features]
-default = ["eip4361", "webauthn"]
-eip4361 = ["hex"]
-webauthn = ["dep:serde_ipld_dagcbor", "dep:ssi-jws", "varsig/webauthn"]
-
 [dependencies]
 siwe = "0.5"
 iri-string = { version = "0.6", features = ["serde"] }
@@ -28,19 +23,18 @@ libipld = { version = "0.16", default-features = false, features = ["derive", "s
 ucan-capabilities-object = "0.1"
 ssi-ucan = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10" }
 ssi-jwk = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10"  }
-ssi-jws = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10", optional = true }
+ssi-jws = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10" }
 ssi-jwt = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10"  }
 ssi-dids = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10"  }
 time = { version = "0.3", features = ["parsing", "formatting", "serde", "macros"] }
 http = "0.2.5"
-hex = { version = "0.4", optional = true }
+hex = { version = "0.4" }
 varsig = { version = "0.1", path = "./varsig" }
 multidid = { version = "0.1", path = "./multidid" }
 siwe-recap = { version = "0.2" }
-serde_ipld_dagcbor = { version = "0.4", optional = true }
+serde_ipld_dagcbor = { version = "0.4" }
 
 [dev-dependencies]
 async-std = { version = "1.10", features = ["attributes"] }
 base64 = "0.13"
-serde_ipld_dagcbor = "0.4"
 did-method-key = { git = "https://github.com/spruceid/ssi.git", branch = "feat/ucan-0.10"  }

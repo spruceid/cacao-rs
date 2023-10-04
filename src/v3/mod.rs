@@ -9,7 +9,6 @@ pub mod payload;
 pub mod recap_cacao;
 pub mod ucan_cacao;
 pub(crate) mod version;
-#[cfg(feature = "webauthn")]
 pub mod webauthn;
 
 pub use multidid;

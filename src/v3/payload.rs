@@ -86,7 +86,6 @@ impl<V, F, NB> Payload<V, F, NB> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Eq, Hash)]
-#[serde(deny_unknown_fields)]
 pub(crate) struct BorrowedPayload<'a, V, F, NB> {
     #[serde(rename = "iss")]
     issuer: &'a MultiDid,
