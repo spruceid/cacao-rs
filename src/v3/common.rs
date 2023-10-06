@@ -3,38 +3,162 @@ use super::{
         version::SiweVersion, Error as RecapError, RecapCacao, RecapFacts, RecapSignature,
         RecapVerify,
     },
-    ucan_cacao::{Error as UcanError, UcanCacao, UcanFacts, UcanSignature},
-    Cacao, CacaoVerifier,
+    ucan_cacao::{Error as UcanError, UcanCacao, UcanSignature},
+    webauthn::{WebauthnCacao, WebauthnSignature, WebauthnVersion},
+    CacaoVerifier, Flattener,
 };
 use async_trait::async_trait;
+use libipld::{cid::Cid, Ipld};
+use multidid::MultiDid;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use siwe::Message;
 use ssi_ucan::{
-    jose::{self, Signature, VerificationError},
+    jose::{self, VerificationError},
     version::SemanticVersion,
     Ucan,
 };
-use varsig::{either::EitherSignature, VarSig};
+use std::collections::BTreeMap;
+use ucan_capabilities_object::Capabilities;
+use varsig::{VarSig, VarSigTrait};
 
-type CommonSignature = EitherSignature<RecapSignature, UcanSignature>;
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Hash)]
-#[serde(untagged)]
-pub enum CommonFacts<F = Value> {
-    Recap(RecapFacts),
-    Ucan(UcanFacts<F>),
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, Hash)]
+pub struct CommonCacao<U = BTreeMap<String, serde_json::Value>, NB = Ipld, W = U> {
+    #[serde(rename = "iss")]
+    issuer: MultiDid,
+    #[serde(rename = "aud")]
+    audience: MultiDid,
+    #[serde(rename = "att")]
+    attenuations: Capabilities<NB>,
+    #[serde(rename = "nnc", skip_serializing_if = "Option::is_none", default)]
+    nonce: Option<String>,
+    #[serde(rename = "prf", skip_serializing_if = "Option::is_none", default)]
+    proof: Option<Vec<Cid>>,
+    #[serde(rename = "iat", skip_serializing_if = "Option::is_none", default)]
+    issued_at: Option<u64>,
+    #[serde(rename = "nbf", skip_serializing_if = "Option::is_none", default)]
+    not_before: Option<u64>,
+    #[serde(rename = "exp", skip_serializing_if = "Option::is_none", default)]
+    expiration: Option<u64>,
+    #[serde(flatten)]
+    typ: Types<U, W>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Hash)]
-#[serde(untagged)]
-pub enum CommonVersions {
-    Recap(SiweVersion),
-    Ucan(SemanticVersion),
+impl<U, NB, W> CommonCacao<U, NB, W> {
+    pub fn issuer(&self) -> &MultiDid {
+        &self.issuer
+    }
+
+    pub fn audience(&self) -> &MultiDid {
+        &self.audience
+    }
+
+    pub fn capabilities(&self) -> &Capabilities<NB> {
+        &self.attenuations
+    }
+
+    pub fn nonce(&self) -> Option<&str> {
+        self.nonce.as_deref()
+    }
+
+    pub fn proof(&self) -> Option<&[Cid]> {
+        self.proof.as_deref()
+    }
+
+    pub fn issued_at(&self) -> Option<u64> {
+        self.issued_at
+    }
+
+    pub fn not_before(&self) -> Option<u64> {
+        self.not_before
+    }
+
+    pub fn expiration(&self) -> Option<u64> {
+        self.expiration
+    }
+
+    pub fn facts(&self) -> Option<Facts<'_, U, W>> {
+        self.typ.facts()
+    }
+
+    pub fn signature(&self) -> Signature<'_> {
+        self.typ.signature()
+    }
+
+    pub fn valid_at_time(&self, time: u64, skew: Option<u64>) -> bool {
+        self.expiration
+            .map_or(true, |exp| time < exp + skew.unwrap_or(0))
+            && self
+                .not_before
+                .map_or(true, |nbf| time >= nbf - skew.unwrap_or(0))
+            && self.issued_at.map_or(true, |iat| {
+                self.not_before.map_or(true, |nbf| nbf < iat)
+                    && self.expiration.map_or(true, |exp| iat < exp)
+            })
+    }
+
+    pub async fn verify<V>(&self, verifier: &V) -> Result<(), V::Error>
+    where
+        V: CacaoVerifier<Self>,
+        NB: Send + Sync,
+    {
+        verifier.verify(self).await
+    }
 }
 
-pub type CommonCacao<F = Value, NB = Value> =
-    Cacao<CommonVersions, CommonSignature, CommonFacts<F>, NB>;
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, Hash)]
+#[serde(deny_unknown_fields)]
+struct Type<V, F, S> {
+    #[serde(rename = "v")]
+    version: V,
+    #[serde(
+        rename = "fct",
+        skip_serializing_if = "Option::is_none",
+        default = "Option::default"
+    )]
+    facts: Option<Flattener<F>>,
+    #[serde(rename = "s", bound = "S: VarSigTrait")]
+    signature: VarSig<S>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, Hash)]
+#[serde(untagged)]
+enum Types<U, W = U> {
+    Ucan(Type<SemanticVersion, U, UcanSignature>),
+    Recap(Type<SiweVersion, RecapFacts, RecapSignature>),
+    Webauthn(Type<WebauthnVersion, W, WebauthnSignature>),
+}
+
+impl<U, W> Types<U, W> {
+    pub fn facts(&self) -> Option<Facts<'_, U, W>> {
+        match self {
+            Types::Ucan(ref ucan) => ucan.facts.as_ref().map(|f| Facts::Ucan(&f.f)),
+            Types::Recap(ref recap) => recap.facts.as_ref().map(|f| Facts::Recap(&f.f)),
+            Types::Webauthn(ref webauthn) => webauthn.facts.as_ref().map(|f| Facts::Webauthn(&f.f)),
+        }
+    }
+
+    pub fn signature(&self) -> Signature<'_> {
+        match self {
+            Types::Ucan(ref ucan) => Signature::Ucan(&ucan.signature),
+            Types::Recap(ref recap) => Signature::Recap(&recap.signature),
+            Types::Webauthn(ref webauthn) => Signature::Webauthn(&webauthn.signature),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Facts<'a, U, W = U> {
+    Recap(&'a RecapFacts),
+    Ucan(&'a U),
+    Webauthn(&'a W),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Signature<'a> {
+    Recap(&'a VarSig<RecapSignature>),
+    Ucan(&'a VarSig<UcanSignature>),
+    Webauthn(&'a VarSig<WebauthnSignature>),
+}
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CommonVerifier<T>(T);
@@ -45,20 +169,18 @@ impl<T> CommonVerifier<T> {
     }
 }
 
-impl<F, NB> CommonCacao<F, NB>
+impl<U, NB, W> CommonCacao<BTreeMap<String, U>, NB, W>
 where
-    F: Clone + Serialize,
+    U: Clone + Serialize,
     NB: Clone + Serialize,
+    W: Clone,
 {
-    pub fn serialize_jwt(&self) -> Result<Option<String>, Error> {
-        Ok(match self.signature.sig() {
-            CommonSignature::A(_) => None,
-            CommonSignature::B(_) => UcanCacao::<F, NB>::try_from(self.clone())
-                .ok()
-                .map(|uc| Ucan::<F, NB>::from(uc).encode())
-                .transpose()
-                .map_err(|e| Error::Ucan(e.into()))?,
-        })
+    pub fn serialize_jwt(&self) -> Result<Option<String>, UcanError> {
+        Ok(UcanCacao::try_from(self.clone())
+            .ok()
+            .map(Ucan::from)
+            .map(|ucan| ucan.encode())
+            .transpose()?)
     }
 }
 
@@ -86,16 +208,16 @@ impl From<VerificationError<jose::Error>> for Error {
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<'r, NB, R, F> CacaoVerifier<CommonVersions, CommonSignature, CommonFacts<F>, NB>
-    for CommonVerifier<R>
+impl<'r, U, NB, W, R> CacaoVerifier<CommonCacao<U, NB, W>> for CommonVerifier<R>
 where
-    R: 'r + Send + Sync + CacaoVerifier<SemanticVersion, UcanSignature, UcanFacts<F>, NB>,
-    F: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
+    R: 'r + Send + Sync + CacaoVerifier<UcanCacao<U, NB>>,
+    U: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
     NB: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
+    W: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
 {
     type Error = Error<R::Error>;
 
-    async fn verify(&self, cacao: &CommonCacao<F, NB>) -> Result<(), Self::Error> {
+    async fn verify(&self, cacao: &CommonCacao<U, NB, W>) -> Result<(), Self::Error> {
         match RecapCacao::try_from(cacao.clone()) {
             Ok(recap) => self.verify(&recap).await?,
             Err(c) => match UcanCacao::try_from(c) {
@@ -111,7 +233,7 @@ where
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<NB, R> CacaoVerifier<SiweVersion, RecapSignature, RecapFacts, NB> for CommonVerifier<R>
+impl<NB, R> CacaoVerifier<RecapCacao<NB>> for CommonVerifier<R>
 where
     R: Send + Sync,
     NB: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
@@ -125,10 +247,9 @@ where
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<'r, NB, R, F> CacaoVerifier<SemanticVersion, UcanSignature, UcanFacts<F>, NB>
-    for CommonVerifier<R>
+impl<'r, NB, R, F> CacaoVerifier<UcanCacao<F, NB>> for CommonVerifier<R>
 where
-    R: 'r + Send + Sync + CacaoVerifier<SemanticVersion, UcanSignature, UcanFacts<F>, NB>,
+    R: 'r + Send + Sync + CacaoVerifier<UcanCacao<F, NB>>,
     F: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
     NB: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
 {
@@ -139,134 +260,71 @@ where
     }
 }
 
-impl<F, NB> From<RecapCacao<NB>> for CommonCacao<F, NB> {
-    fn from(recap: RecapCacao<NB>) -> Self {
-        CommonCacao {
-            issuer: recap.issuer,
-            audience: recap.audience,
-            version: CommonVersions::Recap(recap.version),
-            attenuations: recap.attenuations,
-            nonce: recap.nonce,
-            proof: recap.proof,
-            issued_at: recap.issued_at,
-            not_before: recap.not_before,
-            expiration: recap.expiration,
-            facts: recap.facts.map(CommonFacts::Recap),
-            signature: VarSig::new(EitherSignature::A(recap.signature.into_inner())),
+macro_rules! impl_from {
+    ($from:ty, $typ:tt) => {
+        impl<U, NB, W> From<$from> for CommonCacao<U, NB, W> {
+            fn from(from: $from) -> Self {
+                CommonCacao {
+                    issuer: from.issuer,
+                    audience: from.audience,
+                    attenuations: from.attenuations,
+                    nonce: from.nonce,
+                    proof: from.proof,
+                    issued_at: from.issued_at,
+                    not_before: from.not_before,
+                    expiration: from.expiration,
+                    typ: Types::$typ(Type {
+                        facts: from.facts,
+                        signature: from.signature,
+                        version: from.version,
+                    }),
+                }
+            }
         }
-    }
+    };
 }
 
-impl<F, NB> From<UcanCacao<F, NB>> for CommonCacao<F, NB> {
-    fn from(ucan: UcanCacao<F, NB>) -> Self {
-        CommonCacao {
-            issuer: ucan.issuer,
-            audience: ucan.audience,
-            version: CommonVersions::Ucan(ucan.version),
-            attenuations: ucan.attenuations,
-            nonce: ucan.nonce,
-            proof: ucan.proof,
-            issued_at: ucan.issued_at,
-            not_before: ucan.not_before,
-            expiration: ucan.expiration,
-            facts: ucan.facts.map(CommonFacts::Ucan),
-            signature: VarSig::new(EitherSignature::B(ucan.signature.into_inner())),
+impl_from!(RecapCacao<NB>, Recap);
+impl_from!(UcanCacao<U, NB>, Ucan);
+impl_from!(WebauthnCacao<W, NB>, Webauthn);
+
+macro_rules! impl_tryfrom {
+    ($into:ty, $typ:tt) => {
+        impl<U, NB, W> TryFrom<CommonCacao<U, NB, W>> for $into {
+            type Error = CommonCacao<U, NB, W>;
+            fn try_from(cacao: CommonCacao<U, NB, W>) -> Result<Self, Self::Error> {
+                match cacao.typ {
+                    Types::$typ(Type {
+                        version,
+                        facts,
+                        signature,
+                    }) => Ok(Self {
+                        issuer: cacao.issuer,
+                        audience: cacao.audience,
+                        version,
+                        attenuations: cacao.attenuations,
+                        nonce: cacao.nonce,
+                        proof: cacao.proof,
+                        issued_at: cacao.issued_at,
+                        not_before: cacao.not_before,
+                        expiration: cacao.expiration,
+                        facts,
+                        signature,
+                    }),
+                    _ => Err(cacao),
+                }
+            }
         }
-    }
+    };
 }
 
-impl<F, NB> TryFrom<CommonCacao<F, NB>> for RecapCacao<NB> {
-    type Error = CommonCacao<F, NB>;
-    fn try_from(cacao: CommonCacao<F, NB>) -> Result<Self, Self::Error> {
-        match (cacao.facts, cacao.signature.into_inner(), cacao.version) {
-            (
-                Some(CommonFacts::Recap(facts)),
-                EitherSignature::A(sig),
-                CommonVersions::Recap(version),
-            ) => Ok(RecapCacao {
-                issuer: cacao.issuer,
-                audience: cacao.audience,
-                version,
-                attenuations: cacao.attenuations,
-                nonce: cacao.nonce,
-                proof: cacao.proof,
-                issued_at: cacao.issued_at,
-                not_before: cacao.not_before,
-                expiration: cacao.expiration,
-                facts: Some(facts),
-                signature: VarSig::new(sig),
-            }),
-            (facts, sig, version) => Err(CommonCacao {
-                issuer: cacao.issuer,
-                audience: cacao.audience,
-                version,
-                attenuations: cacao.attenuations,
-                nonce: cacao.nonce,
-                proof: cacao.proof,
-                issued_at: cacao.issued_at,
-                not_before: cacao.not_before,
-                expiration: cacao.expiration,
-                facts,
-                signature: VarSig::new(sig),
-            }),
-        }
-    }
-}
+impl_tryfrom!(RecapCacao<NB>, Recap);
+impl_tryfrom!(UcanCacao<U, NB>, Ucan);
+impl_tryfrom!(WebauthnCacao<W, NB>, Webauthn);
 
-impl<F, NB> TryFrom<CommonCacao<F, NB>> for UcanCacao<F, NB> {
-    type Error = CommonCacao<F, NB>;
-    fn try_from(cacao: CommonCacao<F, NB>) -> Result<Self, Self::Error> {
-        match (cacao.facts, cacao.signature.into_inner(), cacao.version) {
-            (
-                Some(CommonFacts::Ucan(facts)),
-                EitherSignature::B(sig),
-                CommonVersions::Ucan(version),
-            ) => Ok(UcanCacao {
-                issuer: cacao.issuer,
-                audience: cacao.audience,
-                version,
-                attenuations: cacao.attenuations,
-                nonce: cacao.nonce,
-                proof: cacao.proof,
-                issued_at: cacao.issued_at,
-                not_before: cacao.not_before,
-                expiration: cacao.expiration,
-                facts: Some(facts),
-                signature: VarSig::new(sig),
-            }),
-            (None, EitherSignature::B(sig), CommonVersions::Ucan(version)) => Ok(UcanCacao {
-                issuer: cacao.issuer,
-                audience: cacao.audience,
-                version,
-                attenuations: cacao.attenuations,
-                nonce: cacao.nonce,
-                proof: cacao.proof,
-                issued_at: cacao.issued_at,
-                not_before: cacao.not_before,
-                expiration: cacao.expiration,
-                facts: None,
-                signature: VarSig::new(sig),
-            }),
-            (facts, sig, version) => Err(CommonCacao {
-                issuer: cacao.issuer,
-                audience: cacao.audience,
-                version,
-                attenuations: cacao.attenuations,
-                nonce: cacao.nonce,
-                proof: cacao.proof,
-                issued_at: cacao.issued_at,
-                not_before: cacao.not_before,
-                expiration: cacao.expiration,
-                facts,
-                signature: VarSig::new(sig),
-            }),
-        }
-    }
-}
-
-impl<F, NB> TryFrom<Ucan<F, NB, Signature>> for CommonCacao<F, NB> {
-    type Error = Error;
-    fn try_from(ucan: Ucan<F, NB, Signature>) -> Result<Self, Self::Error> {
+impl<U, NB, W> TryFrom<Ucan<U, NB, jose::Signature>> for CommonCacao<BTreeMap<String, U>, NB, W> {
+    type Error = UcanError;
+    fn try_from(ucan: Ucan<U, NB, jose::Signature>) -> Result<Self, Self::Error> {
         Ok(UcanCacao::try_from(ucan)?.into())
     }
 }
@@ -275,7 +333,7 @@ impl<F, NB> TryFrom<(Message, [u8; 65])> for CommonCacao<F, NB>
 where
     NB: for<'d> Deserialize<'d>,
 {
-    type Error = Error;
+    type Error = RecapError;
     fn try_from(siwe: (Message, [u8; 65])) -> Result<Self, Self::Error> {
         Ok(RecapCacao::try_from(siwe)?.into())
     }
