@@ -1,4 +1,4 @@
-use super::{Cacao, CacaoVerifier};
+use super::{Cacao, CacaoVerifier, Flattener};
 use async_trait::async_trait;
 use libipld::cid::{
     multihash::{Code, Multihash, MultihashDigest},
@@ -44,7 +44,7 @@ pub enum Error {
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<NB, R, F> CacaoVerifier<WebauthnVersion, WebauthnSignature, F, NB> for &R
+impl<NB, R, F> CacaoVerifier<WebauthnCacao<F, NB>> for &R
 where
     R: DIDResolver,
     F: Send + Sync + for<'a> Deserialize<'a> + Serialize,
@@ -184,7 +184,7 @@ impl<F, NB> Payload<F, NB> {
             issued_at: self.issued_at,
             not_before: self.not_before,
             expiration: self.expiration,
-            facts: self.facts,
+            facts: self.facts.map(|f| Flattener { f }),
             signature: VarSig::new(sig),
         }
     }
@@ -224,7 +224,7 @@ pub(crate) struct BorrowedPayload<'a, F, NB> {
         skip_serializing_if = "Option::is_none",
         default = "Option::default"
     )]
-    facts: &'a Option<F>,
+    facts: Option<&'a F>,
 }
 
 impl<'a, F, NB> BorrowedPayload<'a, F, NB> {
@@ -255,7 +255,7 @@ impl<'a, F, NB> From<&'a WebauthnCacao<F, NB>> for BorrowedPayload<'a, F, NB> {
             issued_at: &cacao.issued_at,
             not_before: &cacao.not_before,
             expiration: &cacao.expiration,
-            facts: &cacao.facts,
+            facts: cacao.facts.as_ref().map(|f| &f.f),
         }
     }
 }
@@ -271,7 +271,7 @@ impl<'a, F, NB> From<&'a Payload<F, NB>> for BorrowedPayload<'a, F, NB> {
             issued_at: &payload.issued_at,
             not_before: &payload.not_before,
             expiration: &payload.expiration,
-            facts: &payload.facts,
+            facts: payload.facts.as_ref(),
         }
     }
 }
