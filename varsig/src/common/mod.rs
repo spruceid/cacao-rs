@@ -4,6 +4,8 @@ use std::io::{Read, Write};
 pub mod ecdsa;
 pub mod ed25519;
 pub mod rsa;
+#[cfg(feature = "webauthn")]
+pub mod webauthn;
 
 const SHA256: u16 = 0x12;
 const SHA512: u16 = 0x13;
@@ -18,6 +20,9 @@ pub const DAG_CBOR_ENCODING: u64 = 0x71;
 pub use ecdsa::{EcdsaError, Eip191, Es256, Es256K, Es512, Ethereum};
 pub use ed25519::{Ed25519, Ed25519Error};
 pub use rsa::{Rsa256, Rsa512, RsaError};
+
+#[cfg(feature = "webauthn")]
+pub use webauthn::PasskeySig;
 
 #[derive(thiserror::Error, Debug)]
 pub enum JoseError<const ENCODING: u64> {
@@ -66,6 +71,19 @@ pub enum JoseSig<const E: u64> {
     Rsa512(Rsa512<E>),
     EdDSA(Ed25519<E>),
     Es256K(Es256K<E>),
+}
+
+impl<const E: u64> JoseSig<E> {
+    pub fn bytes(&self) -> &[u8] {
+        match self {
+            JoseSig::Es256(sig) => sig.bytes(),
+            JoseSig::Es512(sig) => sig.bytes(),
+            JoseSig::Rsa256(sig) => sig.bytes(),
+            JoseSig::Rsa512(sig) => sig.bytes(),
+            JoseSig::EdDSA(sig) => sig.bytes(),
+            JoseSig::Es256K(sig) => sig.bytes(),
+        }
+    }
 }
 
 impl<const E: u64> VarSigTrait for JoseSig<E> {
