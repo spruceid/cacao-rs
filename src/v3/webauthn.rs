@@ -11,7 +11,7 @@ use serde_json::Value;
 use ssi_dids::did_resolve::DIDResolver;
 use ssi_jws::verify_bytes;
 use ssi_ucan::util::get_verification_key;
-use std::collections::TryReserveError;
+use std::collections::{BTreeMap, TryReserveError};
 use ucan_capabilities_object::Capabilities;
 use varsig::common::{
     webauthn::{get_challenge_hash, Error as WebAuthnError},
@@ -20,7 +20,8 @@ use varsig::common::{
 use varsig::VarSig;
 
 pub type WebauthnSignature = PasskeySig<DAG_CBOR_ENCODING>;
-pub type WebauthnCacao<F = Value, NB = Value> = Cacao<WebauthnVersion, WebauthnSignature, F, NB>;
+pub type WebauthnCacao<F = BTreeMap<String, Value>, NB = Value> =
+    Cacao<WebauthnVersion, WebauthnSignature, F, NB>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
