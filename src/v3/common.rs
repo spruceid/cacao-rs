@@ -146,7 +146,8 @@ impl<U, W> Types<U, W> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[serde(untagged)]
 pub enum Facts<'a, U, W = U> {
     Recap(&'a RecapFacts),
     Ucan(&'a U),
