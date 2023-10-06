@@ -29,7 +29,7 @@ pub mod generic {
         io::read_u64,
     };
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct PasskeySig<S> {
         client_data: Vec<u8>,
         authenticator_data: Vec<u8>,
