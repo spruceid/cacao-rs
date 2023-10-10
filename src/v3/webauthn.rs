@@ -140,8 +140,12 @@ impl<F, NB> Payload<F, NB> {
         }
     }
 
-    pub fn capabilities(&mut self) -> &mut Capabilities<NB> {
-        &mut self.attenuations
+    pub fn capabilities<M>(&mut self, f: M) -> &mut Self
+    where
+        M: FnOnce(&mut Capabilities<NB>) -> Capabilities<NB>,
+    {
+        self.attenuations = f(&mut self.attenuations);
+        self
     }
 
     pub fn nonce(&mut self, nonce: String) -> &mut Self {
