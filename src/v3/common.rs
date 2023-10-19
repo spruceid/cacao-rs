@@ -4,7 +4,7 @@ use super::{
         RecapVerify,
     },
     ucan_cacao::{Error as UcanError, UcanCacao, UcanSignature},
-    webauthn::{WebauthnCacao, WebauthnSignature, WebauthnVersion},
+    webauthn::{Error as WebauthnError, WebauthnCacao, WebauthnSignature, WebauthnVersion},
     CacaoVerifier, Flattener,
 };
 use async_trait::async_trait;
@@ -186,16 +186,18 @@ where
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum Error<U: std::error::Error = UcanError> {
+pub enum Error<U: std::error::Error = UcanError, W: std::error::Error = WebauthnError> {
     #[error(transparent)]
     Ucan(U),
     #[error(transparent)]
     Recap(#[from] RecapError),
+    #[error(transparent)]
+    Webauthn(W),
     #[error("Signature and Facts Mismatch")]
     Mismatch,
 }
 
-impl From<UcanError> for Error {
+impl<W: std::error::Error> From<UcanError> for Error<UcanError, W> {
     fn from(e: UcanError) -> Self {
         Self::Ucan(e)
     }
@@ -207,25 +209,37 @@ impl From<VerificationError<jose::Error>> for Error {
     }
 }
 
+impl<U: std::error::Error> From<WebauthnError> for Error<U, WebauthnError> {
+    fn from(e: WebauthnError) -> Self {
+        Self::Webauthn(e)
+    }
+}
+
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<'r, U, NB, W, R> CacaoVerifier<CommonCacao<U, NB, W>> for CommonVerifier<R>
 where
-    R: 'r + Send + Sync + CacaoVerifier<UcanCacao<U, NB>>,
+    R: 'r + Send + Sync + CacaoVerifier<UcanCacao<U, NB>> + CacaoVerifier<WebauthnCacao<W, NB>>,
     U: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
     NB: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
     W: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
 {
-    type Error = Error<R::Error>;
+    type Error = Error<
+        <R as CacaoVerifier<UcanCacao<U, NB>>>::Error,
+        <R as CacaoVerifier<WebauthnCacao<W, NB>>>::Error,
+    >;
 
     async fn verify(&self, cacao: &CommonCacao<U, NB, W>) -> Result<(), Self::Error> {
         match RecapCacao::try_from(cacao.clone()) {
             Ok(recap) => self.verify(&recap).await?,
             Err(c) => match UcanCacao::try_from(c) {
                 Ok(ucan) => self.verify(&ucan).await.map_err(Error::Ucan)?,
-                Err(_) => {
-                    return Err(Error::Mismatch);
-                }
+                Err(c) => match WebauthnCacao::try_from(c) {
+                    Ok(webauthn) => self.verify(&webauthn).await.map_err(Error::Webauthn)?,
+                    Err(_) => {
+                        return Err(Error::Mismatch);
+                    }
+                },
             },
         };
         Ok(())
@@ -257,6 +271,21 @@ where
     type Error = R::Error;
 
     async fn verify(&self, cacao: &UcanCacao<F, NB>) -> Result<(), Self::Error> {
+        self.0.verify(cacao).await
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl<'r, NB, R, F> CacaoVerifier<WebauthnCacao<F, NB>> for CommonVerifier<R>
+where
+    R: 'r + Send + Sync + CacaoVerifier<WebauthnCacao<F, NB>>,
+    F: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
+    NB: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
+{
+    type Error = R::Error;
+
+    async fn verify(&self, cacao: &WebauthnCacao<F, NB>) -> Result<(), Self::Error> {
         self.0.verify(cacao).await
     }
 }
@@ -351,6 +380,7 @@ impl<U, NB, W> CommonCacao<U, NB, W> {
     }
 }
 
+// because we can't use the `#[serde(flatten)]` attribute when serializing dagcbor
 impl<U: Serialize, NB: Serialize, W: Serialize> Serialize for CommonCacao<U, NB, W> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -360,38 +390,38 @@ impl<U: Serialize, NB: Serialize, W: Serialize> Serialize for CommonCacao<U, NB,
         let mut map = serializer.serialize_struct("CommonCacao", self.ser_len())?;
         map.serialize_field("att", &self.attenuations)?;
         map.serialize_field("aud", &self.audience)?;
+        if let Some(expiration) = self.expiration() {
+            map.serialize_field("exp", &expiration)?;
+        };
+        if let Some(facts) = self.facts() {
+            map.serialize_field("fct", &facts)?;
+        };
+        if let Some(issued_at) = self.issued_at() {
+            map.serialize_field("iat", &issued_at)?;
+        };
         map.serialize_field("iss", &self.issuer)?;
+        if let Some(not_before) = self.not_before() {
+            map.serialize_field("nbf", &not_before)?;
+        };
         if let Some(nonce) = self.nonce() {
             map.serialize_field("nnc", &nonce)?;
         };
         if let Some(proof) = self.proof() {
             map.serialize_field("prf", &proof)?;
         };
-        if let Some(issued_at) = self.issued_at() {
-            map.serialize_field("iat", &issued_at)?;
-        };
-        if let Some(not_before) = self.not_before() {
-            map.serialize_field("nbf", &not_before)?;
-        };
-        if let Some(expiration) = self.expiration() {
-            map.serialize_field("exp", &expiration)?;
-        };
         match &self.typ {
             Types::Ucan(t) => {
-                map.serialize_field("v", &t.version)?;
                 map.serialize_field("s", &t.signature)?;
+                map.serialize_field("v", &t.version)?;
             }
             Types::Recap(t) => {
-                map.serialize_field("v", &t.version)?;
                 map.serialize_field("s", &t.signature)?;
+                map.serialize_field("v", &t.version)?;
             }
             Types::Webauthn(t) => {
-                map.serialize_field("v", &t.version)?;
                 map.serialize_field("s", &t.signature)?;
+                map.serialize_field("v", &t.version)?;
             }
-        };
-        if let Some(facts) = self.facts() {
-            map.serialize_field("fct", &facts)?;
         };
         map.end()
     }
@@ -405,6 +435,7 @@ mod test {
     async fn basic() {
         let encoded = [
             "qmNpc3NYG50aygECAbFNPE9fv7z7mK8tMwAA1JyVuTqnAGNhdWRYVp0a7QE4NstKM22BZAAHaojdiik61NN1l7wVRKwcQJWixAbFHzEjejZNa2lFaExWMmVxOWFqelBRQTZRMkJVU2t6WHdUMm1GYkR2TkdqTXl0VzRTV2g0YXZhMWNhdHSheEtrZXBsZXI6cGtoOmVpcDE1NToxOjB4QjE0ZDNjNEY1RkJGQkNGQjk4YWYyZDMzMDAwMGQ0OWM5NUI5M2FBNzovL2RlZmF1bHQva3alZmt2L2RlbIGgZmt2L2dldIGgZmt2L3B1dIGgZ2t2L2xpc3SBoGtrdi9tZXRhZGF0YYGgY25uY3FVajg5YkdHWmtoNFJKNjY4dmNwcmaAY2lhdBocvbpSY2V4cBsAAAAHda9C0mNmY3SkZWlhdC16ZC41MlplZXhwLXpkLjUyWmZkb21haW5pbG9jYWxob3N0aXJlc291cmNlc4Bhc1hINOcBG5HDAwx4ASjJGspMdIhMu2NX9o06hfQbz1SqCvdAWjwWOpO6aDh56KfReehDpmKEJxYXdQVVLMAmFVq1SZxBIzljSnkc",
+            "pWNhdHSheEZrZXBsZXI6a2V5OnpEbmFlV1JVd3JvY05MOTdnOEw0ZTZTY3VDYmNrcFFoQzIxRktMR25CSkxRR2NzMmc6Ly9kZWZhdWx0oWpvcmJpdC9ob3N0gaBjYXVkWCWdGu0Bb0rW8YlySQ1v4l7PKVDoDmcsosRAzcijJGmepZrIc4oAY2lzc1gmnRqAJAJZBlltN8cQWrIUuEk4ixMQja39vremwH3pkS1Pw0iTcQBhc1j4NPLMAYgBeyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiRWlBekNYSmRNTDJ1LVNBWUZTVi1CR2g2Y0FxeVkzU0pUallyQVdueVpmNTNfQSIsIm9yaWdpbiI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODAwMCIsImNyb3NzT3JpZ2luIjp0cnVlfSVJlg3liA6MaHQ0Fw9kdmBbj-SuuaKGMseZXPO6gx2XYwUAAAAAgCQSce0x-XfSHCx2JcTX5p95E0yKSjp-WXf93nZ5whHTrlTAgII6yBZtWnNnd6o_GAkBMJmDcrNtLPoMV2THvb0KXBNhdmR3YW4z"
         ];
         let verifier = CommonVerifier::new(&did_method_key::DIDKey);
         for e in encoded {

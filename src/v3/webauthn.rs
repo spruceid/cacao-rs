@@ -9,13 +9,14 @@ use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
 use serde_ipld_dagcbor::EncodeError;
 use serde_json::Value;
 use ssi_dids::did_resolve::DIDResolver;
+use ssi_jwk::Algorithm;
 use ssi_jws::verify_bytes;
 use ssi_ucan::util::get_verification_key;
 use std::collections::{BTreeMap, TryReserveError};
 use ucan_capabilities_object::Capabilities;
 use varsig::common::{
     webauthn::{get_challenge_hash, Error as WebAuthnError},
-    PasskeySig, DAG_CBOR_ENCODING,
+    JoseSig, PasskeySig, DAG_CBOR_ENCODING,
 };
 use varsig::VarSig;
 
@@ -76,12 +77,19 @@ where
         let key = get_verification_key(&cacao.issuer.to_string(), *self).await?;
         // verify signature
         verify_bytes(
-            key.algorithm.ok_or(ssi_jws::Error::MissingCurve)?,
+            match cacao.signature.sig().signature() {
+                JoseSig::EdDSA(_) => Algorithm::EdDSA,
+                JoseSig::Es256(_) => Algorithm::ES256,
+                JoseSig::Es512(_) => Algorithm::ES256,
+                JoseSig::Es256K(_) => Algorithm::ES256K,
+                JoseSig::Rsa256(_) => Algorithm::RS256,
+                JoseSig::Rsa512(_) => Algorithm::RS512,
+            },
             &[
+                cacao.signature.sig().authenticator_data(),
                 Code::Sha2_256
                     .digest(cacao.signature.sig().client_data())
                     .digest(),
-                cacao.signature.sig().authenticator_data(),
             ]
             .concat(),
             &key,
