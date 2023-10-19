@@ -126,7 +126,7 @@ pub struct Payload<F, NB> {
 }
 
 impl<F, NB> Payload<F, NB> {
-    fn new(audience: MultiDid) -> Self {
+    pub fn new(audience: MultiDid) -> Self {
         Self {
             audience,
             version: WebauthnVersion,

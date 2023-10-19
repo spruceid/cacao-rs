@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 use ucan_capabilities_object::Capabilities;
 use varsig::{VarSig, VarSigTrait};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
 pub struct CommonCacao<U = BTreeMap<String, serde_json::Value>, NB = Ipld, W = U> {
     #[serde(rename = "iss")]
     issuer: MultiDid,
@@ -340,16 +340,77 @@ where
     }
 }
 
+impl<U, NB, W> CommonCacao<U, NB, W> {
+    fn ser_len(&self) -> usize {
+        5 + self.nonce().map_or(0usize, |_| 1)
+            + self.proof().map_or(0usize, |_| 1)
+            + self.issued_at().map_or(0usize, |_| 1)
+            + self.not_before().map_or(0usize, |_| 1)
+            + self.expiration().map_or(0usize, |_| 1)
+            + self.facts().map_or(0usize, |_| 1)
+    }
+}
+
+impl<U: Serialize, NB: Serialize, W: Serialize> Serialize for CommonCacao<U, NB, W> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut map = serializer.serialize_struct("CommonCacao", self.ser_len())?;
+        map.serialize_field("att", &self.attenuations)?;
+        map.serialize_field("aud", &self.audience)?;
+        map.serialize_field("iss", &self.issuer)?;
+        if let Some(nonce) = self.nonce() {
+            map.serialize_field("nnc", &nonce)?;
+        };
+        if let Some(proof) = self.proof() {
+            map.serialize_field("prf", &proof)?;
+        };
+        if let Some(issued_at) = self.issued_at() {
+            map.serialize_field("iat", &issued_at)?;
+        };
+        if let Some(not_before) = self.not_before() {
+            map.serialize_field("nbf", &not_before)?;
+        };
+        if let Some(expiration) = self.expiration() {
+            map.serialize_field("exp", &expiration)?;
+        };
+        match &self.typ {
+            Types::Ucan(t) => {
+                map.serialize_field("v", &t.version)?;
+                map.serialize_field("s", &t.signature)?;
+            }
+            Types::Recap(t) => {
+                map.serialize_field("v", &t.version)?;
+                map.serialize_field("s", &t.signature)?;
+            }
+            Types::Webauthn(t) => {
+                map.serialize_field("v", &t.version)?;
+                map.serialize_field("s", &t.signature)?;
+            }
+        };
+        if let Some(facts) = self.facts() {
+            map.serialize_field("fct", &facts)?;
+        };
+        map.end()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[async_std::test]
     async fn basic() {
-        let encoded = "qmNpc3NYG50aygECAbFNPE9fv7z7mK8tMwAA1JyVuTqnAGNhdWRYVp0a7QE4NstKM22BZAAHaojdiik61NN1l7wVRKwcQJWixAbFHzEjejZNa2lFaExWMmVxOWFqelBRQTZRMkJVU2t6WHdUMm1GYkR2TkdqTXl0VzRTV2g0YXZhMWNhdHSheEtrZXBsZXI6cGtoOmVpcDE1NToxOjB4QjE0ZDNjNEY1RkJGQkNGQjk4YWYyZDMzMDAwMGQ0OWM5NUI5M2FBNzovL2RlZmF1bHQva3alZmt2L2RlbIGgZmt2L2dldIGgZmt2L3B1dIGgZ2t2L2xpc3SBoGtrdi9tZXRhZGF0YYGgY25uY3FVajg5YkdHWmtoNFJKNjY4dmNwcmaAY2lhdBocvbpSY2V4cBsAAAAHda9C0mNmY3SkZWlhdC16ZC41MlplZXhwLXpkLjUyWmZkb21haW5pbG9jYWxob3N0aXJlc291cmNlc4Bhc1hINOcBG5HDAwx4ASjJGspMdIhMu2NX9o06hfQbz1SqCvdAWjwWOpO6aDh56KfReehDpmKEJxYXdQVVLMAmFVq1SZxBIzljSnkc";
-        let decoded = base64::decode(encoded).unwrap();
-        let cacao: CommonCacao = serde_ipld_dagcbor::from_slice(&decoded).unwrap();
+        let encoded = [
+            "qmNpc3NYG50aygECAbFNPE9fv7z7mK8tMwAA1JyVuTqnAGNhdWRYVp0a7QE4NstKM22BZAAHaojdiik61NN1l7wVRKwcQJWixAbFHzEjejZNa2lFaExWMmVxOWFqelBRQTZRMkJVU2t6WHdUMm1GYkR2TkdqTXl0VzRTV2g0YXZhMWNhdHSheEtrZXBsZXI6cGtoOmVpcDE1NToxOjB4QjE0ZDNjNEY1RkJGQkNGQjk4YWYyZDMzMDAwMGQ0OWM5NUI5M2FBNzovL2RlZmF1bHQva3alZmt2L2RlbIGgZmt2L2dldIGgZmt2L3B1dIGgZ2t2L2xpc3SBoGtrdi9tZXRhZGF0YYGgY25uY3FVajg5YkdHWmtoNFJKNjY4dmNwcmaAY2lhdBocvbpSY2V4cBsAAAAHda9C0mNmY3SkZWlhdC16ZC41MlplZXhwLXpkLjUyWmZkb21haW5pbG9jYWxob3N0aXJlc291cmNlc4Bhc1hINOcBG5HDAwx4ASjJGspMdIhMu2NX9o06hfQbz1SqCvdAWjwWOpO6aDh56KfReehDpmKEJxYXdQVVLMAmFVq1SZxBIzljSnkc",
+        ];
         let verifier = CommonVerifier::new(&did_method_key::DIDKey);
-        cacao.verify(&verifier).await.unwrap();
+        for e in encoded {
+            let decoded = base64::decode_config(e, base64::URL_SAFE_NO_PAD).unwrap();
+            let cacao: CommonCacao = serde_ipld_dagcbor::from_slice(&decoded).unwrap();
+            cacao.verify(&verifier).await.unwrap();
+        }
     }
 }
