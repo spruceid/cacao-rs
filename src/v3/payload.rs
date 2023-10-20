@@ -1,4 +1,4 @@
-use super::Cacao;
+use super::{Cacao, Flattener};
 use libipld::cid::Cid;
 use multidid::MultiDid;
 use serde::{Deserialize, Serialize};
@@ -7,9 +7,9 @@ use ucan_capabilities_object::Capabilities;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, Hash)]
 #[serde(deny_unknown_fields)]
-pub struct Payload<V, F, NB> {
+pub struct Payload<V, F, NB, I = MultiDid> {
     #[serde(rename = "iss")]
-    pub issuer: MultiDid,
+    pub issuer: I,
     #[serde(rename = "aud")]
     pub audience: MultiDid,
     #[serde(rename = "v")]
@@ -34,8 +34,8 @@ pub struct Payload<V, F, NB> {
     pub facts: Option<F>,
 }
 
-impl<V, F, NB> Payload<V, F, NB> {
-    pub(crate) fn new(issuer: MultiDid, audience: MultiDid, version: V) -> Self {
+impl<V, F, NB, I> Payload<V, F, NB, I> {
+    pub(crate) fn new(issuer: I, audience: MultiDid, version: V) -> Self {
         Self {
             issuer,
             audience,
@@ -86,10 +86,9 @@ impl<V, F, NB> Payload<V, F, NB> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Eq, Hash)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct BorrowedPayload<'a, V, F, NB> {
+pub(crate) struct BorrowedPayload<'a, V, F, NB, I = MultiDid> {
     #[serde(rename = "iss")]
-    issuer: &'a MultiDid,
+    issuer: &'a I,
     #[serde(rename = "aud")]
     audience: &'a MultiDid,
     #[serde(rename = "v")]
@@ -111,7 +110,7 @@ pub(crate) struct BorrowedPayload<'a, V, F, NB> {
         skip_serializing_if = "Option::is_none",
         default = "Option::default"
     )]
-    facts: &'a Option<F>,
+    facts: Option<Flattener<&'a F>>,
 }
 
 impl<'a, V, S, F, NB> From<&'a Cacao<V, S, F, NB>> for BorrowedPayload<'a, V, F, NB> {
@@ -126,7 +125,7 @@ impl<'a, V, S, F, NB> From<&'a Cacao<V, S, F, NB>> for BorrowedPayload<'a, V, F,
             issued_at: &cacao.issued_at,
             not_before: &cacao.not_before,
             expiration: &cacao.expiration,
-            facts: &cacao.facts,
+            facts: cacao.facts.as_ref().map(|f| Flattener { f: &f.f }),
         }
     }
 }
@@ -143,7 +142,7 @@ impl<'a, V, F, NB> From<&'a Payload<V, F, NB>> for BorrowedPayload<'a, V, F, NB>
             issued_at: &payload.issued_at,
             not_before: &payload.not_before,
             expiration: &payload.expiration,
-            facts: &payload.facts,
+            facts: payload.facts.as_ref().map(|f| Flattener { f }),
         }
     }
 }

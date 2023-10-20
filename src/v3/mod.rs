@@ -8,6 +8,7 @@ pub mod common;
 pub mod payload;
 pub mod recap_cacao;
 pub mod ucan_cacao;
+pub mod webauthn;
 
 pub use multidid;
 use multidid::MultiDid;
@@ -40,7 +41,7 @@ pub struct Cacao<V, S, F, NB = Ipld> {
         skip_serializing_if = "Option::is_none",
         default = "Option::default"
     )]
-    facts: Option<F>,
+    facts: Option<Flattener<F>>,
     #[serde(rename = "s", bound = "S: VarSigTrait")]
     signature: VarSig<S>,
 }
@@ -79,7 +80,7 @@ impl<V, S, F, NB> Cacao<V, S, F, NB> {
     }
 
     pub fn facts(&self) -> Option<&F> {
-        self.facts.as_ref()
+        self.facts.as_ref().map(|f| &f.f)
     }
 
     pub fn signature(&self) -> &VarSig<S> {
@@ -100,7 +101,7 @@ impl<V, S, F, NB> Cacao<V, S, F, NB> {
 
     pub async fn verify<VE>(&self, verifier: &VE) -> Result<(), VE::Error>
     where
-        VE: CacaoVerifier<V, S, F, NB>,
+        VE: CacaoVerifier<Self>,
         NB: Send + Sync,
     {
         verifier.verify(self).await
@@ -109,8 +110,14 @@ impl<V, S, F, NB> Cacao<V, S, F, NB> {
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait CacaoVerifier<V, S, F, NB> {
+pub trait CacaoVerifier<C> {
     type Error: std::error::Error;
 
-    async fn verify(&self, cacao: &Cacao<V, S, F, NB>) -> Result<(), Self::Error>;
+    async fn verify(&self, cacao: &C) -> Result<(), Self::Error>;
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, Hash)]
+struct Flattener<T> {
+    #[serde(flatten)]
+    pub f: T,
 }

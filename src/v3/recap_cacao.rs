@@ -1,4 +1,4 @@
-use super::{payload::Payload, Cacao, CacaoVerifier};
+use super::{payload::Payload, Cacao, CacaoVerifier, Flattener};
 use async_trait::async_trait;
 use http::uri::Authority;
 use iri_string::types::UriString;
@@ -119,14 +119,16 @@ where
             issued_at: Some(issued_at),
             not_before,
             expiration,
-            facts: Some(RecapFacts {
-                iat_info,
-                nbf_info,
-                exp_info,
-                domain: siwe.domain,
-                request_id: siwe.request_id,
-                resources,
-                statement,
+            facts: Some(Flattener {
+                f: RecapFacts {
+                    iat_info,
+                    nbf_info,
+                    exp_info,
+                    domain: siwe.domain,
+                    request_id: siwe.request_id,
+                    resources,
+                    statement,
+                },
             }),
             signature: VarSig::new(Ethereum::new(sig)),
         })
@@ -146,7 +148,7 @@ where
             Method::Pkh(DidPkhTypes::Eip155(eip155)) => eip155.into_inner(),
             m => return Err(Error::IncorrectDidType(m)),
         };
-        let facts = cacao.facts.ok_or(Error::MissingFacts)?;
+        let facts = cacao.facts.ok_or(Error::MissingFacts)?.f;
         let mut cap = Capability::new().with_proofs(cacao.proof.unwrap_or_default().iter());
         for (resource, actions) in cacao.attenuations.into_inner() {
             cap.with_actions(resource, actions);
@@ -201,7 +203,7 @@ pub struct RecapVerify(());
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<NB> CacaoVerifier<SiweVersion, RecapSignature, RecapFacts, NB> for RecapVerify
+impl<NB> CacaoVerifier<RecapCacao<NB>> for RecapVerify
 where
     NB: Send + Sync + Serialize + Clone,
 {
@@ -232,7 +234,7 @@ impl<NB> Payload<SiweVersion, RecapFacts, NB> {
             issued_at: self.issued_at,
             not_before: self.not_before,
             expiration: self.expiration,
-            facts: self.facts,
+            facts: self.facts.map(|f| Flattener { f }),
             signature: VarSig::new(sig),
         }
     }

@@ -1,4 +1,4 @@
-use super::{payload::Payload, Cacao, CacaoVerifier};
+use super::{payload::Payload, Cacao, CacaoVerifier, Flattener};
 use async_trait::async_trait;
 use multidid::MultiDid;
 use serde::{Deserialize, Serialize};
@@ -18,8 +18,8 @@ use varsig::{
 };
 
 pub type UcanSignature = JoseSig<DAG_JSON_ENCODING>;
-pub type UcanFacts<F> = BTreeMap<String, F>;
-pub type UcanCacao<F = Value, NB = Value> = Cacao<SemanticVersion, UcanSignature, UcanFacts<F>, NB>;
+pub type UcanCacao<F = BTreeMap<String, Value>, NB = Value> =
+    Cacao<SemanticVersion, UcanSignature, F, NB>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -37,7 +37,7 @@ impl From<jwt::EncodeError> for Error {
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<NB, R, F> CacaoVerifier<SemanticVersion, UcanSignature, UcanFacts<F>, NB> for &R
+impl<NB, R, F> CacaoVerifier<UcanCacao<BTreeMap<String, F>, NB>> for &R
 where
     R: DIDResolver,
     F: Send + Sync + for<'a> Deserialize<'a> + Serialize + Clone,
@@ -45,14 +45,14 @@ where
 {
     type Error = Error;
 
-    async fn verify(&self, cacao: &UcanCacao<F, NB>) -> Result<(), Error> {
+    async fn verify(&self, cacao: &UcanCacao<BTreeMap<String, F>, NB>) -> Result<(), Error> {
         let ucan = Ucan::<F, NB, Signature>::from(cacao.clone()).encode()?;
         Ucan::<F, NB, Signature>::decode_and_verify_jwt(&ucan, *self, None).await?;
         Ok(())
     }
 }
 
-impl<F, NB> TryFrom<Ucan<F, NB, Signature>> for UcanCacao<F, NB> {
+impl<F, NB> TryFrom<Ucan<F, NB, Signature>> for UcanCacao<BTreeMap<String, F>, NB> {
     type Error = Error;
     fn try_from(ucan: Ucan<F, NB, Signature>) -> Result<Self, Self::Error> {
         let (payload, signature) = ucan.into_inner();
@@ -66,7 +66,7 @@ impl<F, NB> TryFrom<Ucan<F, NB, Signature>> for UcanCacao<F, NB> {
             issued_at: payload.issued_at,
             not_before: payload.not_before,
             expiration: payload.expiration,
-            facts: payload.facts,
+            facts: payload.facts.map(|f| Flattener { f }),
             signature: VarSig::new(match signature {
                 Signature::ES256(sig) => JoseSig::Es256(Es256::new(sig)),
                 Signature::ES512(sig) => JoseSig::Es512(Es512::new(sig)),
@@ -79,8 +79,8 @@ impl<F, NB> TryFrom<Ucan<F, NB, Signature>> for UcanCacao<F, NB> {
     }
 }
 
-impl<F, NB> From<UcanCacao<F, NB>> for Ucan<F, NB, Signature> {
-    fn from(cacao: UcanCacao<F, NB>) -> Self {
+impl<F, NB> From<UcanCacao<BTreeMap<String, F>, NB>> for Ucan<F, NB, Signature> {
+    fn from(cacao: UcanCacao<BTreeMap<String, F>, NB>) -> Self {
         let signature = match cacao.signature.into_inner() {
             JoseSig::EdDSA(s) => Signature::EdDSA(s.into_inner()),
             JoseSig::Es256(s) => Signature::ES256(s.into_inner()),
@@ -96,7 +96,7 @@ impl<F, NB> From<UcanCacao<F, NB>> for Ucan<F, NB, Signature> {
         payload.issued_at = cacao.issued_at;
         payload.not_before = cacao.not_before;
         payload.expiration = cacao.expiration;
-        payload.facts = cacao.facts;
+        payload.facts = cacao.facts.map(|f| f.f);
         payload.sign(signature)
     }
 }
@@ -107,7 +107,7 @@ impl<F, NB> UcanCacao<F, NB> {
     }
 }
 
-impl<F, NB> Payload<SemanticVersion, UcanFacts<F>, NB> {
+impl<F, NB> Payload<SemanticVersion, F, NB> {
     pub fn sign(self, sig: UcanSignature) -> UcanCacao<F, NB> {
         Cacao {
             issuer: self.issuer,
@@ -119,7 +119,7 @@ impl<F, NB> Payload<SemanticVersion, UcanFacts<F>, NB> {
             issued_at: self.issued_at,
             not_before: self.not_before,
             expiration: self.expiration,
-            facts: self.facts,
+            facts: self.facts.map(|f| Flattener { f }),
             signature: VarSig::new(sig),
         }
     }
